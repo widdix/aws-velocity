@@ -1,0 +1,18 @@
+{
+  "name": "acceptance",
+  "version": "1.0.0",
+  "description": "",
+  "main": "spec.js",
+  "scripts": {
+    "test": "jshint ."
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "frisby": "^0.8.5",
+    "jasmine-node": "^1.14.5"
+  },
+  "devDependencies": {
+    "jshint": "^2.9.4"
+  }
+}
