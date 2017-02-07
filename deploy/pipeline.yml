@@ -4,8 +4,10 @@ Description: 'Pipeline'
 Parameters:
   RepositoryName:
     Type: String
+    Default: 'aws-velocity'
   BranchName:
     Type: String
+    Default: 'master'
 Resources:
   ArtifactsBucket:
     DependsOn: CloudFormationRole # make sure that CloudFormationRole is deleted last
@@ -185,7 +187,7 @@ Resources:
             RoleArn: !GetAtt 'CloudFormationRole.Arn'
             StackName: !Ref 'AWS::StackName'
             TemplatePath: 'Source::deploy/pipeline.yml'
-            ParameterOverrides: !Sub '{"RepositoryName": "${RepositoryName}", "BranchName": "${BranchName}"}'
+            ParameterOverrides: !Sub '{"p": "${RepositoryName}", "BranchName": "${BranchName}"}'
           InputArtifacts:
           - Name: Source
           RunOrder: 1
