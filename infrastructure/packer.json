@@ -14,7 +14,7 @@
   "provisioners": [{
     "type": "file",
     "source": "app/",
-    "destination": "/opt/app"
+    "destination": "/tmp/app"
   }, {
     "type": "shell",
     "script": "infrastructure/packer.sh"
