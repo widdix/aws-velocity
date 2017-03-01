@@ -1,3 +1,5 @@
 {
-  "ImageId": {"Fn::GetParam": ["AMI", "infrastructure/ami.json", "image"]}
+  "Parameters": {
+    "ImageId": {"Fn::GetParam": ["AMI", "infrastructure/ami.json", "image"]}
+  }
 }
