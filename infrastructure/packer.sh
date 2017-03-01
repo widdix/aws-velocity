@@ -1,9 +1,8 @@
-#!/bin/bash
+#!/bin/bash -ex
 # this script runs as ec2-user
 
-sudo su
-yum -y update
-curl --silent --location https://rpm.nodesource.com/setup_6.x | bash -
-yum -y install nodejs
-npm install -g forever@0.15.3
-mv /tmp/app /opt
+sudo yum -y update
+curl --silent --location https://rpm.nodesource.com/setup_6.x | sudo bash -
+sudo yum -y install nodejs
+sudo npm install -g forever@0.15.3
+sudo mv /tmp/app /opt
