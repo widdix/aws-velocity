@@ -12,6 +12,10 @@
     "ami_regions": ["REGION"]
   }],
   "provisioners": [{
+    "type": "file",
+    "source": "app/",
+    "destination": "/opt/app"
+  }, {
     "type": "shell",
     "script": "packer.sh"
   }]

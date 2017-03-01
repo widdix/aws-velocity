@@ -164,8 +164,8 @@ Resources:
           artifacts:
             files:
             - 'app/**/*'
-            - 'infrastructure/packer.json'
-            - 'infrastructure/packer.sh'
+            - 'infrastructure/packer.json' # this is a hack because we can not pass multiple Arifacts as an input to CodeBuild at the moment
+            - 'infrastructure/packer.sh' # this is a hack because we can not pass multiple Arifacts as an input to CodeBuild at the moment
       TimeoutInMinutes: 10
   AcceptanceProject:
     DependsOn: CloudFormationRole # make sure that CloudFormationRole is deleted last
@@ -230,7 +230,7 @@ Resources:
               - 'unzip /opt/packer.zip -d /opt'
             pre_build:
               commands:
-              - 'ssed -i "s:#REGION:${AWS::Region}:g" infrastructure/packer.json'
+              - 'sed -i "s:REGION:${AWS::Region}:g" infrastructure/packer.json'
             build:
               commands:
               - '/opt/packer -machine-readable build infrastructure/packer.json > infrastructure/packer.txt'
