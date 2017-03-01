@@ -17,6 +17,6 @@
     "destination": "/opt/app"
   }, {
     "type": "shell",
-    "script": "packer.sh"
+    "script": "infrastructure/packer.sh"
   }]
 }
