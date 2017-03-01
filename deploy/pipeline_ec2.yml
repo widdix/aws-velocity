@@ -233,19 +233,16 @@ Resources:
               - 'sed -i "s:REGION:${AWS::Region}:g" infrastructure/packer.json'
             build:
               commands:
-              - '/opt/packer -machine-readable build infrastructure/packer.json > infrastructure/packer.txt'
+              - '/opt/packer -machine-readable build infrastructure/packer.json | tee infrastructure/packer.txt'
             post_build:
               commands:
-              - 'cat infrastructure/packer.txt'
               - 'echo "{" > infrastructure/ami.json'
               - 'cat infrastructure/packer.txt | grep '',amazon-ebs,artifact,0,id,'' | awk -F'','' ''{print $6}'' | sed ''s/%!(PACKER_COMMA)/\''$''\n/g'' | awk -F'':'' ''{print "\"image\": \""$2"\","}'' | sed ''$ s/.$//'' >> infrastructure/ami.json'
               - 'echo "}" >> infrastructure/ami.json'
-              - 'cat infrastructure/ami.json'
           artifacts:
             files:
             - 'infrastructure/packer.txt'
             - 'infrastructure/ami.json'
-            discard-paths: yes
       TimeoutInMinutes: 10
   Pipeline:
     Type: 'AWS::CodePipeline::Pipeline'
