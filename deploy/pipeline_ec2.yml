@@ -344,7 +344,7 @@ Resources:
             RoleArn: !GetAtt 'CloudFormationRole.Arn'
             StackName: !Sub '${AWS::StackName}-acceptance'
             TemplatePath: 'Source::infrastructure/ec2.yml'
-            TemplateConfiguration: 'ource::infrastructure/ec2.json'
+            TemplateConfiguration: 'Source::infrastructure/ec2.json'
           InputArtifacts:
           - Name: Source
           - Name: AMI
