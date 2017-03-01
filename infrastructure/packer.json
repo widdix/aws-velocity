@@ -13,8 +13,8 @@
   }],
   "provisioners": [{
     "type": "file",
-    "source": "app/",
-    "destination": "/tmp/app"
+    "source": "app",
+    "destination": "/tmp"
   }, {
     "type": "shell",
     "script": "infrastructure/packer.sh"
