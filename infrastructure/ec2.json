@@ -1,0 +1,3 @@
+{
+  "ImageId": {"Fn::GetParam": ["AMI", "infrastructure/ami.json", "image"]}
+}

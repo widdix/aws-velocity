@@ -1,0 +1,351 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Pipeline: EC2'
+Parameters:
+  RepositoryName:
+    Type: String
+    Default: 'aws-velocity'
+  BranchName:
+    Type: String
+    Default: 'master'
+Resources:
+  ArtifactsBucket:
+    DependsOn: CloudFormationRole # make sure that CloudFormationRole is deleted last
+    DeletionPolicy: Retain
+    Type: 'AWS::S3::Bucket'
+  PipelineRole:
+    DependsOn: CloudFormationRole # make sure that CloudFormationRole is deleted last
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - 'codepipeline.amazonaws.com'
+          Action:
+          - 'sts:AssumeRole'
+      ManagedPolicyArns:
+      - 'arn:aws:iam::aws:policy/AdministratorAccess'
+  CloudFormationRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - 'cloudformation.amazonaws.com'
+          Action:
+          - 'sts:AssumeRole'
+      ManagedPolicyArns:
+      - 'arn:aws:iam::aws:policy/AdministratorAccess'
+  CodeBuildRole:
+    DependsOn: CloudFormationRole # make sure that CloudFormationRole is deleted last
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - 'codebuild.amazonaws.com'
+          Action:
+          - 'sts:AssumeRole'
+      Policies:
+      - PolicyName: ServiceRole
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: CloudWatchLogsPolicy
+            Effect: Allow
+            Action: 
+            - 'logs:CreateLogGroup'
+            - 'logs:CreateLogStream'
+            - 'logs:PutLogEvents'
+            Resource: '*'
+          - Sid: CodeCommitPolicy
+            Effect: Allow
+            Action: 'codecommit:GitPull'
+            Resource: '*'
+          - Sid: S3GetObjectPolicy
+            Effect: Allow
+            Action: 
+            - 's3:GetObject'
+            - 's3:GetObjectVersion'
+            Resource: '*'
+          - Sid: S3PutObjectPolicy
+            Effect: 'Allow'
+            Action: 's3:PutObject'
+            Resource: '*'
+  CodeBuildUser:
+    DependsOn: CloudFormationRole
+    Type: 'AWS::IAM::User'
+    Properties:
+      Policies:
+      - PolicyName: Packer
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: EC2
+            Effect: Allow
+            Action:
+            - 'ec2:AttachVolume'
+            - 'ec2:AuthorizeSecurityGroupIngress'
+            - 'ec2:CopyImage'
+            - 'ec2:CreateImage'
+            - 'ec2:CreateKeypair'
+            - 'ec2:CreateSecurityGroup'
+            - 'ec2:CreateSnapshot'
+            - 'ec2:CreateTags'
+            - 'ec2:CreateVolume'
+            - 'ec2:DeleteKeypair'
+            - 'ec2:DeleteSecurityGroup'
+            - 'ec2:DeleteSnapshot'
+            - 'ec2:DeleteVolume'
+            - 'ec2:DeregisterImage'
+            - 'ec2:DescribeImageAttribute'
+            - 'ec2:DescribeImages'
+            - 'ec2:DescribeInstances'
+            - 'ec2:DescribeRegions'
+            - 'ec2:DescribeSecurityGroups'
+            - 'ec2:DescribeSnapshots'
+            - 'ec2:DescribeSubnets'
+            - 'ec2:DescribeTags'
+            - 'ec2:DescribeVolumes'
+            - 'ec2:DetachVolume'
+            - 'ec2:GetPasswordData'
+            - 'ec2:ModifyImageAttribute'
+            - 'ec2:ModifyInstanceAttribute'
+            - 'ec2:ModifySnapshotAttribute'
+            - 'ec2:RegisterImage'
+            - 'ec2:RunInstances'
+            - 'ec2:StopInstances'
+            - 'ec2:TerminateInstances'
+            Resource: '*'
+  CodeBuildUserAccessKey:
+    DependsOn: CloudFormationRole
+    Type: 'AWS::IAM::AccessKey'
+    Properties:
+      UserName: !Ref CodeBuildUser
+  AppProject:
+    DependsOn: CloudFormationRole # make sure that CloudFormationRole is deleted last
+    Type: 'AWS::CodeBuild::Project'
+    Properties:
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        ComputeType: 'BUILD_GENERAL1_SMALL'
+        Image: 'amazonlinux:2016.09'
+        Type: 'LINUX_CONTAINER'
+      Name: !Sub '${AWS::StackName}-app'
+      ServiceRole: !GetAtt 'CodeBuildRole.Arn'
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.1
+          phases:
+            install:
+              commands:
+              - 'curl --silent --location https://rpm.nodesource.com/setup_6.x | bash -'
+              - 'yum -y install nodejs'
+            build:
+              commands:
+              - 'cd app/ && npm install'
+              - 'cd app/ && npm test'
+            post_build:
+              commands:
+              - 'rm -rf app/node_modules/'
+              - 'rm -rf app/test/'
+              - 'cd app/ && npm install --production'
+          artifacts:
+            files:
+            - 'app/**/*'
+            - 'infrastructure/packer.json'
+            - 'infrastructure/packer.sh'
+      TimeoutInMinutes: 10
+  AcceptanceProject:
+    DependsOn: CloudFormationRole # make sure that CloudFormationRole is deleted last
+    Type: 'AWS::CodeBuild::Project'
+    Properties:
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        ComputeType: 'BUILD_GENERAL1_SMALL'
+        Image: 'amazonlinux:2016.09'
+        Type: 'LINUX_CONTAINER'
+      Name: !Sub '${AWS::StackName}-acceptance'
+      ServiceRole: !GetAtt 'CodeBuildRole.Arn'
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.1
+          phases:
+            install:
+              commands:
+              - 'curl --silent --location https://rpm.nodesource.com/setup_6.x | bash -'
+              - 'yum -y install nodejs'
+            build:
+              commands:
+              - 'cd acceptance/ && npm install'
+              - 'cd acceptance/ && npm test'
+            post_build:
+              commands:
+              - 'rm -rf acceptance/node_modules/'
+              - 'rm -rf acceptance/test/'
+              - 'cd acceptance/ && npm install --production'
+          artifacts:
+            files:
+            - 'acceptance/**/*'
+      TimeoutInMinutes: 10
+  AMIProject:
+    DependsOn: CloudFormationRole
+    Type: 'AWS::CodeBuild::Project'
+    Properties:
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        ComputeType: 'BUILD_GENERAL1_SMALL'
+        Image: 'amazonlinux:2016.09'
+        Type: 'LINUX_CONTAINER'
+        EnvironmentVariables:
+        - Name: 'AWS_ACCESS_KEY_ID'
+          Value: !Ref CodeBuildUserAccessKey
+        - Name: 'AWS_SECRET_ACCESS_KEY'
+          Value: !GetAtt 'CodeBuildUserAccessKey.SecretAccessKey'
+      Name: !Sub '${AWS::StackName}-ami'
+      ServiceRole: !GetAtt 'CodeBuildRole.Arn'
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: !Sub |
+          version: 0.1
+          phases:
+            install:
+              commands:
+              - 'yum -y install unzip'
+              - 'curl -s -m 60 -o /opt/packer.zip https://releases.hashicorp.com/packer/0.12.1/packer_0.12.1_linux_amd64.zip'
+              - 'unzip /opt/packer.zip -d /opt'
+            pre_build:
+              commands:
+              - 'ssed -i "s:#REGION:${AWS::Region}:g" infrastructure/packer.json'
+            build:
+              commands:
+              - '/opt/packer -machine-readable build infrastructure/packer.json > infrastructure/packer.txt'
+            post_build:
+              commands:
+              - 'cat infrastructure/packer.txt'
+              - 'echo "{" > infrastructure/ami.json'
+              - 'cat infrastructure/packer.txt | grep '',amazon-ebs,artifact,0,id,'' | awk -F'','' ''{print $6}'' | sed ''s/%!(PACKER_COMMA)/\''$''\n/g'' | awk -F'':'' ''{print "\"image\": \""$2"\","}'' | sed ''$ s/.$//'' >> infrastructure/ami.json'
+              - 'echo "}" >> infrastructure/ami.json'
+              - 'cat infrastructure/ami.json'
+          artifacts:
+            files:
+            - 'infrastructure/packer.txt'
+            - 'infrastructure/ami.json'
+            discard-paths: yes
+      TimeoutInMinutes: 10
+  Pipeline:
+    Type: 'AWS::CodePipeline::Pipeline'
+    Properties:
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ArtifactsBucket
+      Name: !Ref 'AWS::StackName'
+      RestartExecutionOnUpdate: true
+      RoleArn: !GetAtt 'PipelineRole.Arn'
+      Stages:
+      - Name: Source
+        Actions:
+        - Name: FetchSource
+          ActionTypeId:
+            Category: Source
+            Owner: AWS
+            Provider: CodeCommit
+            Version: 1
+          Configuration:
+            RepositoryName: !Ref RepositoryName
+            BranchName: !Ref BranchName
+          OutputArtifacts:
+          - Name: Source
+          RunOrder: 1
+      - Name: Pipeline
+        Actions:
+        - Name: DeployPipeline
+          ActionTypeId:
+            Category: Deploy
+            Owner: AWS
+            Provider: CloudFormation
+            Version: 1
+          Configuration:
+            ActionMode: CREATE_UPDATE
+            Capabilities: CAPABILITY_IAM
+            RoleArn: !GetAtt 'CloudFormationRole.Arn'
+            StackName: !Ref 'AWS::StackName'
+            TemplatePath: 'Source::deploy/pipeline_ec2.yml'
+            ParameterOverrides: !Sub '{"RepositoryName": "${RepositoryName}", "BranchName": "${BranchName}"}'
+          InputArtifacts:
+          - Name: Source
+          RunOrder: 1
+      - Name: Build
+        Actions:
+        - Name: BuildAndTestApp
+          ActionTypeId:
+            Category: Build
+            Owner: AWS
+            Provider: CodeBuild
+            Version: 1
+          Configuration:
+            ProjectName: !Ref AppProject
+          InputArtifacts:
+          - Name: Source
+          OutputArtifacts:
+          - Name: App
+          RunOrder: 1
+        - Name: BuildAndTestAcceptance
+          ActionTypeId:
+            Category: Build
+            Owner: AWS
+            Provider: CodeBuild
+            Version: 1
+          Configuration:
+            ProjectName: !Ref AcceptanceProject
+          InputArtifacts:
+          - Name: Source
+          OutputArtifacts:
+          - Name: Acceptance
+          RunOrder: 1
+        - Name: BuildAMI
+          ActionTypeId:
+            Category: Build
+            Owner: AWS
+            Provider: CodeBuild
+            Version: 1
+          Configuration:
+            ProjectName: !Ref AMIProject
+          InputArtifacts:
+          - Name: App
+          OutputArtifacts:
+          - Name: AMI
+          RunOrder: 2
+      - Name: Acceptance
+        Actions:
+        - Name: Deploy
+          ActionTypeId:
+            Category: Deploy
+            Owner: AWS
+            Provider: CloudFormation
+            Version: 1
+          Configuration:
+            ActionMode: CREATE_UPDATE
+            Capabilities: CAPABILITY_IAM
+            RoleArn: !GetAtt 'CloudFormationRole.Arn'
+            StackName: !Sub '${AWS::StackName}-acceptance'
+            TemplatePath: 'Source::infrastructure/ec2.yml'
+            TemplateConfiguration: 'ource::infrastructure/ec2.json'
+          InputArtifacts:
+          - Name: Source
+          - Name: AMI
+          RunOrder: 1
