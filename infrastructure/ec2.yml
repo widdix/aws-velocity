@@ -397,6 +397,7 @@ Resources:
         Value: !Ref AutoScalingGroup
       ComparisonOperator: GreaterThanThreshold
       MetricName: CPUUtilization
+  # Filters all logs for the word Error
   AppErrorsLogsFilter:
     Type: 'AWS::Logs::MetricFilter'
     Properties:
@@ -406,6 +407,7 @@ Resources:
       - MetricName": AppErrors
         MetricNamespace: !Ref 'AWS::StackName'
         MetricValue: 1
+  # Sends an alert if the word Error was found in the logs
   AppErrorsAlarm:
     Type: 'AWS::CloudWatch::Alarm'
     Properties:
