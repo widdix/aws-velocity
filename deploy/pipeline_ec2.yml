@@ -42,7 +42,7 @@ Resources:
           - 'sts:AssumeRole'
       ManagedPolicyArns:
       - 'arn:aws:iam::aws:policy/AdministratorAccess'
-  CodeBuildRole:
+  DefaultCodeBuildRole:
     DependsOn: CloudFormationRole # make sure that CloudFormationRole is deleted last
     Type: 'AWS::IAM::Role'
     Properties:
@@ -81,7 +81,7 @@ Resources:
             Effect: 'Allow'
             Action: 's3:PutObject'
             Resource: '*'
-  ExtendedCodeBuildRole:
+  RunAcceptanceCodeBuildRole:
     DependsOn: CloudFormationRole # make sure that CloudFormationRole is deleted last
     Type: 'AWS::IAM::Role'
     Properties:
@@ -130,18 +130,52 @@ Resources:
             - 'cloudformation:DescribeStacks'
             Resource: !Sub 'arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${AWS::StackName}-acceptance/*'
   # Packer needs a set of access rights as defined in https://www.packer.io/docs/builders/amazon.html
-  CodeBuildUser:
-    DependsOn: CloudFormationRole
-    Type: 'AWS::IAM::User'
+  AMICodeBuildRole:
+    DependsOn: CloudFormationRole # make sure that CloudFormationRole is deleted last
+    Type: 'AWS::IAM::Role'
     Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - 'codebuild.amazonaws.com'
+          Action:
+          - 'sts:AssumeRole'
       Policies:
-      - PolicyName: Packer
+      - PolicyName: ServiceRole
         PolicyDocument:
           Version: '2012-10-17'
           Statement:
-          - Sid: EC2
+          - Sid: CloudWatchLogsPolicy
             Effect: Allow
-            Action:
+            Action: 
+            - 'logs:CreateLogGroup'
+            - 'logs:CreateLogStream'
+            - 'logs:PutLogEvents'
+            Resource: '*'
+          - Sid: CodeCommitPolicy
+            Effect: Allow
+            Action: 'codecommit:GitPull'
+            Resource: '*'
+          - Sid: S3GetObjectPolicy
+            Effect: Allow
+            Action: 
+            - 's3:GetObject'
+            - 's3:GetObjectVersion'
+            Resource: '*'
+          - Sid: S3PutObjectPolicy
+            Effect: 'Allow'
+            Action: 's3:PutObject'
+            Resource: '*'
+      - PolicyName: EC2
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: CloudFormation
+            Effect: Allow
+            Action: 
             - 'ec2:AttachVolume'
             - 'ec2:AuthorizeSecurityGroupIngress'
             - 'ec2:CopyImage'
@@ -175,12 +209,6 @@ Resources:
             - 'ec2:StopInstances'
             - 'ec2:TerminateInstances'
             Resource: '*'
-  # And Packer needs access credentials
-  CodeBuildUserAccessKey:
-    DependsOn: CloudFormationRole
-    Type: 'AWS::IAM::AccessKey'
-    Properties:
-      UserName: !Ref CodeBuildUser
   AppProject:
     DependsOn: CloudFormationRole # make sure that CloudFormationRole is deleted last
     Type: 'AWS::CodeBuild::Project'
@@ -192,7 +220,7 @@ Resources:
         Image: 'aws/codebuild/nodejs:6.3.1'
         Type: 'LINUX_CONTAINER'
       Name: !Sub '${AWS::StackName}-app'
-      ServiceRole: !GetAtt 'CodeBuildRole.Arn'
+      ServiceRole: !GetAtt 'DefaultCodeBuildRole.Arn'
       Source:
         Type: CODEPIPELINE
         BuildSpec: |
@@ -224,7 +252,7 @@ Resources:
         Image: 'aws/codebuild/nodejs:6.3.1'
         Type: 'LINUX_CONTAINER'
       Name: !Sub '${AWS::StackName}-acceptance'
-      ServiceRole: !GetAtt 'CodeBuildRole.Arn'
+      ServiceRole: !GetAtt 'DefaultCodeBuildRole.Arn'
       Source:
         Type: CODEPIPELINE
         BuildSpec: |
@@ -253,13 +281,8 @@ Resources:
         ComputeType: 'BUILD_GENERAL1_SMALL'
         Image: 'amazonlinux:2016.09'
         Type: 'LINUX_CONTAINER'
-        EnvironmentVariables: # pass in the AWS credentials as environment variables
-        - Name: 'AWS_ACCESS_KEY_ID'
-          Value: !Ref CodeBuildUserAccessKey
-        - Name: 'AWS_SECRET_ACCESS_KEY'
-          Value: !GetAtt 'CodeBuildUserAccessKey.SecretAccessKey'
       Name: !Sub '${AWS::StackName}-ami'
-      ServiceRole: !GetAtt 'CodeBuildRole.Arn'
+      ServiceRole: !GetAtt 'AMICodeBuildRole.Arn'
       Source:
         Type: CODEPIPELINE
         BuildSpec: !Sub |
@@ -297,7 +320,7 @@ Resources:
         Image: 'aws/codebuild/nodejs:6.3.1'
         Type: 'LINUX_CONTAINER'
       Name: !Sub '${AWS::StackName}-run-acceptance'
-      ServiceRole: !GetAtt 'ExtendedCodeBuildRole.Arn'
+      ServiceRole: !GetAtt 'RunAcceptanceCodeBuildRole.Arn'
       Source:
         Type: CODEPIPELINE
         BuildSpec: !Sub |
