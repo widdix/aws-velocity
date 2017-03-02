@@ -35,6 +35,10 @@ Resources:
         FromPort: 22
         ToPort: 22
         IpProtocol: tcp
+      - SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
+        FromPort: 80
+        ToPort: 80
+        IpProtocol: tcp
   InstanceProfile:
     Type: 'AWS::IAM::InstanceProfile'
     Properties:
@@ -168,6 +172,8 @@ Resources:
       VPCZoneIdentifier: 
       - 'Fn::ImportValue': !Sub '${ParentVPCStack}-SubnetAPublic'
       - 'Fn::ImportValue': !Sub '${ParentVPCStack}-SubnetBPublic'
+      TargetGroupARNs:
+      - !Ref TargetGroup
       Tags:
       - Key: Name
         Value: 'ec2'
@@ -179,3 +185,53 @@ Resources:
       AutoScalingRollingUpdate:
         PauseTime: PT15M
         WaitOnResourceSignals: true
+  LoadBalancerSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: 'load-balancer-sg'
+      VpcId:
+        'Fn::ImportValue': !Sub '${ParentVPCStack}-VPC'
+      SecurityGroupIngress:
+      - CidrIp: '0.0.0.0/0'
+        FromPort: 80
+        ToPort: 80
+        IpProtocol: tcp
+  LoadBalancer:
+    Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
+    Properties:
+      Scheme: 'internet-facing'
+      SecurityGroups:
+      - !Ref LoadBalancerSecurityGroup
+      Subnets:
+      - 'Fn::ImportValue': !Sub '${ParentVPCStack}-SubnetAPublic'
+      - 'Fn::ImportValue': !Sub '${ParentVPCStack}-SubnetBPublic'
+      Tags:
+      - Key: Nameload-balancer'
+  TargetGroup:
+    Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
+    Properties:
+      HealthCheckIntervalSeconds: 15
+      HealthCheckPath: '/5'
+      HealthCheckPort: 3000
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 8
+      Matcher:
+        HttpCode: 200
+      Port: 3000
+      Protocol: HTTP
+      Tags:
+      - Key: Name
+        Value: 'target-group'
+      VpcId:
+        'Fn::ImportValue': !Sub '${ParentVPCStack}-VPC'
+  Listener:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Properties:
+      DefaultActions:
+      - TargetGroupArn: !Ref TargetGroup
+        Type: forward
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
