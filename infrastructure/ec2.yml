@@ -6,10 +6,12 @@ Parameters:
   ParentVPCStack:
     Description: 'Stack name of parent VPC stack based on vpc/vpc-*azs.yaml template.'
     Type: String
+  # A bastion host increases the security of your system. In this case, we use on of our Free Templates for AWS CloudFormation (https://github.com/widdix/aws-cf-templates/tree/master/vpc).
   ParentSSHBastionStack:
     Description: 'Optional Stack name of parent SSH bastion host/instance stack based on vpc/vpc-ssh-bastion.yaml template.'
     Type: String
     Default: ''
+  # This is the simple way of getting SSH access to your EC2 instance. not the most secure way. If you want to have personalized users follow https://cloudonaut.io/manage-aws-ec2-ssh-access-with-iam/
   KeyName:
     Description: 'Optional key pair of the ec2-user to establish a SSH connection.'
     Type: String
@@ -18,9 +20,11 @@ Parameters:
     Description: 'The instance type of web servers (e.g. t2.micro).'
     Type: String
     Default: 't2.micro'
+  # Where does this AMI comes from? It will be created in the pipeline!
   ImageId:
     Description: 'Unique ID of the Amazon Machine Image (AMI) to boot from.'
     Type: String
+  # How long do you want to keep logs?
   LogsRetentionInDays:
     Description: 'Specifies the number of days you want to retain log events in the specified log group.'
     Type: Number
@@ -130,6 +134,7 @@ Resources:
       LoadBalancerArn: !Ref LoadBalancer
       Port: 80
       Protocol: HTTP
+  # The app listens on port 3000, but only the load balancer is allowed to send traffic to that port!
   SecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
     Properties:
@@ -141,6 +146,7 @@ Resources:
         FromPort: 3000
         ToPort: 3000
         IpProtocol: tcp
+  # If the bastion host approach is enabled, traffic on port 22 is only allowed from the bastion host
   SecurityGroupInSSHBastion:
     Type: 'AWS::EC2::SecurityGroupIngress'
     Condition: HasSSHBastionSecurityGroup
@@ -151,6 +157,7 @@ Resources:
       ToPort: 22
       SourceSecurityGroupId:
         'Fn::ImportValue': !Sub '${ParentSSHBastionStack}-SecurityGroup'
+  # Otherwise SSH is allowed from anywhere
   SecurityGroupInSSHWorld:
     Type: 'AWS::EC2::SecurityGroupIngress'
     Condition: HasNotSSHBastionSecurityGroup
@@ -166,6 +173,7 @@ Resources:
       Path: '/'
       Roles:
       - !Ref Role
+  # The EC2 instance needs permissions to make requests to the CloudWatch Logs service to deliver logs.
   Role:
     Type: 'AWS::IAM::Role'
     Properties:
@@ -189,6 +197,7 @@ Resources:
             - 'logs:PutLogEvents'
             - 'logs:DescribeLogStreams'
             Resource: 'arn:aws:logs:*:*:*'
+  # Log files that reside on EC2 instances must be avoided because instances come and go depending on load. CloudWatch Logs provides a centralized way to store and search logs.
   Logs:
     Type: 'AWS::Logs::LogGroup'
     Properties:
@@ -196,10 +205,10 @@ Resources:
   LaunchConfiguration:
     Type: 'AWS::AutoScaling::LaunchConfiguration'
     Metadata:
-      'AWS::CloudFormation::Init':
+      'AWS::CloudFormation::Init': # Configuration for the cfn-ini helper script that runs on startup. This is only needed for the dynamic configuration. The rest is backed into the AMI in the pipeline.
         config:
           files:
-            '/etc/awslogs/awscli.conf':
+            '/etc/awslogs/awscli.conf': # configuration file for the CloudWatch Logs agent that ships logs to the service
               content: !Sub |
                 [default]
                 region = ${AWS::Region}
@@ -208,7 +217,7 @@ Resources:
               mode: '000644'
               owner: root
               group: root
-            '/etc/awslogs/awslogs.conf':
+            '/etc/awslogs/awslogs.conf': # configuration file for the CloudWatch Logs agent that ships logs to the service
               content: !Sub |
                 [general]
                 state_file = /var/lib/awslogs/agent-state
@@ -260,24 +269,24 @@ Resources:
               group: root
           commands:
             'forever':
-              command: 'forever start index.js'
+              command: 'forever start index.js' # forever keeps the app (a Node.js script) up and running in the background
               cwd: '/opt/app'
           services:
             sysvinit:
-              awslogs:
+              awslogs: # start the CloudWatch Logs agent
                 enabled: true
                 ensureRunning: true
                 files:
                 - '/etc/awslogs/awslogs.conf'
                 - '/etc/awslogs/awscli.conf'
     Properties:
-      ImageId: !Ref ImageId
+      ImageId: !Ref ImageId # the image that is created during the build in the pipeline passed in as a parameter
       IamInstanceProfile: !Ref InstanceProfile
       InstanceType: !Ref InstanceType
       SecurityGroups:
       - !Ref SecurityGroup
       KeyName: !If [HasKeyName, !Ref KeyName, !Ref 'AWS::NoValue']
-      UserData:
+      UserData: # execute cfn-init helper script and signal success or failure back to CloudFormation
         'Fn::Base64': !Sub |
           #!/bin/bash -x
           /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource LaunchConfiguration --region ${AWS::Region}
@@ -286,27 +295,28 @@ Resources:
     Type: 'AWS::AutoScaling::AutoScalingGroup'
     Properties:
       LaunchConfigurationName: !Ref LaunchConfiguration
-      MinSize: 2
-      MaxSize: 4
-      DesiredCapacity: 2
+      MinSize: 2 # at least two instances should always be running
+      MaxSize: 4 # at most 4 instances are allowed to run
+      DesiredCapacity: 2 # you want to start with 2 instances
       HealthCheckGracePeriod: 300
-      HealthCheckType: ELB
+      HealthCheckType: ELB # make use of the health check of the load balancer which checks the application health instead of only checking the instance health
       VPCZoneIdentifier: 
       - 'Fn::ImportValue': !Sub '${ParentVPCStack}-SubnetAPublic'
       - 'Fn::ImportValue': !Sub '${ParentVPCStack}-SubnetBPublic'
       TargetGroupARNs:
-      - !Ref TargetGroup
+      - !Ref TargetGroup # automatically (de)register instances with the target group of the load balancer
       Tags:
       - Key: Name
         Value: 'ec2'
         PropagateAtLaunch: true
-    CreationPolicy:
+    CreationPolicy: # wait up to 15 minutes to receive a success signal during instance startup
       ResourceSignal:
         Timeout: PT15M
-    UpdatePolicy:
+    UpdatePolicy: # this allows rolling updates if a change requires new EC2 instances
       AutoScalingRollingUpdate:
         PauseTime: PT15M
         WaitOnResourceSignals: true
+  # Increase the number of instances by 25% but at least by one not more often than every 10 minutes.
   ScalingUpPolicy:
     Type: 'AWS::AutoScaling::ScalingPolicy'
     Properties:
@@ -315,14 +325,16 @@ Resources:
       AutoScalingGroupName: !Ref AutoScalingGroup
       Cooldown: 600
       ScalingAdjustment: 25
+  # Decrease the number of instances by 25% but at least by one one not more often than every 15 minutes.
   ScalingDownPolicy:
     Type: 'AWS::AutoScaling::ScalingPolicy'
     Properties:
       AdjustmentType: PercentChangeInCapacity
       MinAdjustmentStep: 1
       AutoScalingGroupName: !Ref AutoScalingGroup
-      Cooldown: 300
+      Cooldown: 900
       ScalingAdjustment: -25
+  # Trigger the ScalingUpPolicy if the average CPU load of the past 5 minutes is higher than 70%
   CPUHighAlarm:
     Type: 'AWS::CloudWatch::Alarm'
     Properties:
@@ -339,6 +351,7 @@ Resources:
         Value: !Ref AutoScalingGroup
       ComparisonOperator: GreaterThanThreshold
       MetricName: CPUUtilization
+  # Trigger the ScalingDownPolicy if the average CPU load of the past 5 minutes is lower than 30% for 3 consecutive times
   CPULowAlarm:
     Type: 'AWS::CloudWatch::Alarm'
     Properties:
@@ -355,6 +368,7 @@ Resources:
         Value: !Ref AutoScalingGroup
       ComparisonOperator: LessThanThreshold
       MetricName: CPUUtilization
+  # Sends an alert if the average CPU load of the past 5 minutes is higher than 85%
   CPUTooHighAlarm:
     Type: 'AWS::CloudWatch::Alarm'
     Properties:
@@ -371,12 +385,14 @@ Resources:
         Value: !Ref AutoScalingGroup
       ComparisonOperator: GreaterThanThreshold
       MetricName: CPUUtilization
+# A CloudFormation stack can return information that is needed by other stacks or scripts.
 Outputs:
   DNSName:
     Description: 'The DNS name for the load balancer.'
     Value: !GetAtt 'LoadBalancer.DNSName'
     Export:
       Name: !Sub '${AWS::StackName}-DNSName'
+  # The URL is needed to run the acceptance test against the correct endpoint
   URL:
     Description: 'URL to the load balancer.'
     Value: !Sub 'http://${LoadBalancer.DNSName}'
