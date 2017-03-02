@@ -42,7 +42,7 @@ Resources:
           - 'sts:AssumeRole'
       ManagedPolicyArns:
       - 'arn:aws:iam::aws:policy/AdministratorAccess'
-  DefaultCodeBuildRole:
+  CodeBuildRole:
     DependsOn: CloudFormationRole # make sure that CloudFormationRole is deleted last
     Type: 'AWS::IAM::Role'
     Properties:
@@ -211,7 +211,7 @@ Resources:
             Resource: '*'
   # This IAM User is only temporarily necessary until https://github.com/mitchellh/packer/pull/4613 is fixed!
   AMICodeBuildUser:
-    DependsOn: CloudFormationRole
+    DependsOn: CloudFormationRole # make sure that CloudFormationRole is deleted last
     Type: 'AWS::IAM::User'
     Properties:
       Policies:
@@ -257,7 +257,7 @@ Resources:
             Resource: '*'
   # This IAM Access Key is only temporarily necessary until https://github.com/mitchellh/packer/pull/4613 is fixed!
   AMICodeBuildUserAccessKey:
-    DependsOn: CloudFormationRole
+    DependsOn: CloudFormationRole # make sure that CloudFormationRole is deleted last
     Type: 'AWS::IAM::AccessKey'
     Properties:
       UserName: !Ref AMICodeBuildUser
@@ -272,7 +272,7 @@ Resources:
         Image: 'aws/codebuild/nodejs:6.3.1'
         Type: 'LINUX_CONTAINER'
       Name: !Sub '${AWS::StackName}-app'
-      ServiceRole: !GetAtt 'DefaultCodeBuildRole.Arn'
+      ServiceRole: !GetAtt 'CodeBuildRole.Arn'
       Source:
         Type: CODEPIPELINE
         BuildSpec: |
@@ -304,7 +304,7 @@ Resources:
         Image: 'aws/codebuild/nodejs:6.3.1'
         Type: 'LINUX_CONTAINER'
       Name: !Sub '${AWS::StackName}-acceptance'
-      ServiceRole: !GetAtt 'DefaultCodeBuildRole.Arn'
+      ServiceRole: !GetAtt 'CodeBuildRole.Arn'
       Source:
         Type: CODEPIPELINE
         BuildSpec: |
@@ -324,7 +324,7 @@ Resources:
             - 'acceptance/**/*'
       TimeoutInMinutes: 10
   AMIProject:
-    DependsOn: CloudFormationRole
+    DependsOn: CloudFormationRole # make sure that CloudFormationRole is deleted last
     Type: 'AWS::CodeBuild::Project'
     Properties:
       Artifacts:
@@ -367,7 +367,7 @@ Resources:
             - 'infrastructure/ami.json'
       TimeoutInMinutes: 10
   RunAcceptanceProject:
-    DependsOn: CloudFormationRole
+    DependsOn: CloudFormationRole # make sure that CloudFormationRole is deleted last
     Type: 'AWS::CodeBuild::Project'
     Properties:
       Artifacts:
