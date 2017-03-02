@@ -264,7 +264,7 @@ Resources:
           phases:
             build:
               commands:
-              - 'cd acceptance/ && ENDPOINT=`aws cloudformation describe-stacks --stack-name ${AWS::StackName}-acceptance --query "Stacks[0].Outputs[?OutputKey==''URL''].OutputValue" --output text` ./node_modules/.bin/jasmine-node .'
+              - 'cd acceptance/ && ENDPOINT=`aws cloudformation describe-stacks --stack-name ${AWS::StackName}-acceptance --query "Stacks[0].Outputs[?OutputKey==''URL''].OutputValue" --output text` ./node_modules/jasmine-node/bin/jasmine-node .'
       TimeoutInMinutes: 10
   Pipeline:
     Type: 'AWS::CodePipeline::Pipeline'
