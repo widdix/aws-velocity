@@ -81,6 +81,45 @@ Resources:
             Effect: 'Allow'
             Action: 's3:PutObject'
             Resource: '*'
+  ExtendedCodeBuildRole:
+    DependsOn: CloudFormationRole # make sure that CloudFormationRole is deleted last
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - 'codebuild.amazonaws.com'
+          Action:
+          - 'sts:AssumeRole'
+      Policies:
+      - PolicyName: ServiceRole
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: CloudWatchLogsPolicy
+            Effect: Allow
+            Action: 
+            - 'logs:CreateLogGroup'
+            - 'logs:CreateLogStream'
+            - 'logs:PutLogEvents'
+            Resource: '*'
+          - Sid: CodeCommitPolicy
+            Effect: Allow
+            Action: 'codecommit:GitPull'
+            Resource: '*'
+          - Sid: S3GetObjectPolicy
+            Effect: Allow
+            Action: 
+            - 's3:GetObject'
+            - 's3:GetObjectVersion'
+            Resource: '*'
+          - Sid: S3PutObjectPolicy
+            Effect: 'Allow'
+            Action: 's3:PutObject'
+            Resource: '*'
       - PolicyName: CloudFormation
         PolicyDocument:
           Version: '2012-10-17'
@@ -90,6 +129,7 @@ Resources:
             Action: 
             - 'cloudformation:DescribeStacks'
             Resource: !Sub 'arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${AWS::StackName}-acceptance/*'
+  # Packer needs a set of access rights as defined in https://www.packer.io/docs/builders/amazon.html
   CodeBuildUser:
     DependsOn: CloudFormationRole
     Type: 'AWS::IAM::User'
@@ -135,6 +175,7 @@ Resources:
             - 'ec2:StopInstances'
             - 'ec2:TerminateInstances'
             Resource: '*'
+  # And Packer needs access credentials
   CodeBuildUserAccessKey:
     DependsOn: CloudFormationRole
     Type: 'AWS::IAM::AccessKey'
@@ -212,7 +253,7 @@ Resources:
         ComputeType: 'BUILD_GENERAL1_SMALL'
         Image: 'amazonlinux:2016.09'
         Type: 'LINUX_CONTAINER'
-        EnvironmentVariables:
+        EnvironmentVariables: # pass in the AWS credentials as environment variables
         - Name: 'AWS_ACCESS_KEY_ID'
           Value: !Ref CodeBuildUserAccessKey
         - Name: 'AWS_SECRET_ACCESS_KEY'
@@ -224,18 +265,18 @@ Resources:
         BuildSpec: !Sub |
           version: 0.1
           phases:
-            install:
+            install: # install Packer
               commands:
               - 'yum -y install unzip'
               - 'curl -s -m 60 -o /opt/packer.zip https://releases.hashicorp.com/packer/0.12.1/packer_0.12.1_linux_amd64.zip'
               - 'unzip /opt/packer.zip -d /opt'
-            pre_build:
+            pre_build: # replace the REGION placeholder with the stack's region
               commands:
               - 'sed -i "s:REGION:${AWS::Region}:g" infrastructure/packer.json'
-            build:
+            build: # run packer
               commands:
               - '/opt/packer -machine-readable build infrastructure/packer.json | tee infrastructure/packer.txt'
-            post_build:
+            post_build: # extract the AMI id into a JSON file
               commands:
               - 'echo "{" > infrastructure/ami.json'
               - 'cat infrastructure/packer.txt | grep '',amazon-ebs,artifact,0,id,'' | awk -F'','' ''{print $6}'' | sed ''s/%!(PACKER_COMMA)/\''$''\n/g'' | awk -F'':'' ''{print "\"image\": \""$2"\","}'' | sed ''$ s/.$//'' >> infrastructure/ami.json'
@@ -256,13 +297,13 @@ Resources:
         Image: 'aws/codebuild/nodejs:6.3.1'
         Type: 'LINUX_CONTAINER'
       Name: !Sub '${AWS::StackName}-run-acceptance'
-      ServiceRole: !GetAtt 'CodeBuildRole.Arn'
+      ServiceRole: !GetAtt 'ExtendedCodeBuildRole.Arn'
       Source:
         Type: CODEPIPELINE
         BuildSpec: !Sub |
           version: 0.1
           phases:
-            build:
+            build: # execute acceptance tests against the acceptance stack
               commands:
               - 'cd acceptance/ && ENDPOINT=`aws cloudformation describe-stacks --stack-name ${AWS::StackName}-acceptance --query "Stacks[0].Outputs[?OutputKey==''URL''].OutputValue" --output text` ./node_modules/jasmine-node/bin/jasmine-node .'
       TimeoutInMinutes: 10
