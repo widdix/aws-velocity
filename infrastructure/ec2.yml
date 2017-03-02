@@ -36,8 +36,8 @@ Resources:
         ToPort: 22
         IpProtocol: tcp
       - SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
-        FromPort: 80
-        ToPort: 80
+        FromPort: 3000
+        ToPort: 3000
         IpProtocol: tcp
   InstanceProfile:
     Type: 'AWS::IAM::InstanceProfile'
