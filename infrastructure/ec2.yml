@@ -397,6 +397,28 @@ Resources:
         Value: !Ref AutoScalingGroup
       ComparisonOperator: GreaterThanThreshold
       MetricName: CPUUtilization
+  AppErrorsLogsFilter:
+    Type: 'AWS::Logs::MetricFilter'
+    Properties:
+      FilterPattern: Error
+      LogGroupName: !Ref Logs
+      MetricTransformations":
+      - MetricName": AppErrors
+        MetricNamespace: !Ref 'AWS::StackName'
+        MetricValue: 1
+  AppErrorsAlarm:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmDescription: 'application errors in logs'
+      Namespace: !Ref 'AWS::StackName'
+      MetricName: AppErrors
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+      - !Ref Alerts
 # A CloudFormation stack can return information that is needed by other stacks or scripts.
 Outputs:
   DNSName:
