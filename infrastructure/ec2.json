@@ -2,6 +2,7 @@
   "Parameters": {
     "ImageId": {"Fn::GetParam": ["AMI", "infrastructure/ami.json", "image"]},
     "ParentVPCStack": "vpc-2azs",
-    "ParentSSHBastionStack": ""
+    "ParentSSHBastionStack": "",
+    "KeyName": "michael"
   }
 }
