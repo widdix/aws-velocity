@@ -2,6 +2,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: 'EC2'
 Parameters:
+  # You can reuse a VPC for multiple applications. In this case, we use on of our Free Templates for AWS CloudFormation (https://github.com/widdix/aws-cf-templates/tree/master/vpc).
   ParentVPCStack:
     Description: 'Stack name of parent VPC stack based on vpc/vpc-*azs.yaml template.'
     Type: String
@@ -30,13 +31,17 @@ Parameters:
     Type: String
 Conditions:
   HasKeyName: !Not [!Equals [!Ref KeyName, '']]
+  HasSSHBastionSecurityGroup: !Not [!Equals [!Ref ParentSSHBastionStack, '']]
+  HasNotSSHBastionSecurityGroup: !Equals [!Ref ParentSSHBastionStack, '']
 Resources:
+  # A SNS topic is used to send alerts via EMail to the value of the AdminEMail parameter 
   Alerts:
     Type: 'AWS::SNS::Topic'
     Properties:
       Subscription:
       - Endpoint: !Ref AdminEMail
         Protocol: email
+  # The load balancer accepts HTTP traffic, therefore the firewall must allow incoming traffic on port 80.
   LoadBalancerSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
     Properties:
@@ -48,6 +53,7 @@ Resources:
         FromPort: 80
         ToPort: 80
         IpProtocol: tcp
+  # The load balancer need to run in public subnets because our users should be able to access the app from the Internet.
   LoadBalancer:
     Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
     Properties:
@@ -60,6 +66,7 @@ Resources:
       Tags:
       - Key: Name
         Value: 'load-balancer'
+  # This alarm is triggered, if the load balancer responds with 5XX status codes
   LoadBalancer5XXAlarm:
     Type: 'AWS::CloudWatch::Alarm'
     Properties:
@@ -76,6 +83,7 @@ Resources:
         Value: !GetAtt 'LoadBalancer.LoadBalancerFullName'
       ComparisonOperator: GreaterThanThreshold
       MetricName: HTTPCode_ELB_5XX_Count
+  # This alarm is triggered, if the backend responds with 5XX status codes
   LoadBalancerTargetGroup5XXAlarm:
     Type: 'AWS::CloudWatch::Alarm'
     Properties:
@@ -92,6 +100,7 @@ Resources:
         Value: !GetAtt 'LoadBalancer.LoadBalancerFullName'
       ComparisonOperator: GreaterThanThreshold
       MetricName: HTTPCode_Target_5XX_Count
+  # A target group groups a bunch of backend instances that receive traffic from the load balancer. the health check ensures that only working backends are used.
   TargetGroup:
     Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
     Properties:
@@ -111,6 +120,7 @@ Resources:
         Value: 'target-group'
       VpcId:
         'Fn::ImportValue': !Sub '${ParentVPCStack}-VPC'
+  # The load balancer should listen on port 80 for HTTP traffic
   Listener:
     Type: 'AWS::ElasticLoadBalancingV2::Listener'
     Properties:
@@ -127,14 +137,29 @@ Resources:
       VpcId:
         'Fn::ImportValue': !Sub '${ParentVPCStack}-VPC'
       SecurityGroupIngress:
-      - CidrIp: '0.0.0.0/0'
-        FromPort: 22
-        ToPort: 22
-        IpProtocol: tcp
       - SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
         FromPort: 3000
         ToPort: 3000
         IpProtocol: tcp
+  SecurityGroupInSSHBastion:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Condition: HasSSHBastionSecurityGroup
+    Properties:
+      GroupId: !Ref SecurityGroup
+      IpProtocol: tcp
+      FromPort: 22
+      ToPort: 22
+      SourceSecurityGroupId:
+        'Fn::ImportValue': !Sub '${ParentSSHBastionStack}-SecurityGroup'
+  SecurityGroupInSSHWorld:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Condition: HasNotSSHBastionSecurityGroup
+    Properties:
+      GroupId: !Ref SecurityGroup
+      IpProtocol: tcp
+      FromPort: 22
+      ToPort: 22
+      CidrIp: '0.0.0.0/0'
   InstanceProfile:
     Type: 'AWS::IAM::InstanceProfile'
     Properties:
