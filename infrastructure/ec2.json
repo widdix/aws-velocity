@@ -4,6 +4,6 @@
     "ParentVPCStack": "vpc-2azs",
     "ParentSSHBastionStack": "",
     "KeyName": "michael",
-    "AdminEMail": "michael@widdix.de"
+    "AdminEmail": "michael@widdix.de"
   }
 }

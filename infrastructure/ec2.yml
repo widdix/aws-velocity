@@ -2,11 +2,11 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: 'EC2'
 Parameters:
-  # You can reuse a VPC for multiple applications. In this case, we use on of our Free Templates for AWS CloudFormation (https://github.com/widdix/aws-cf-templates/tree/master/vpc).
+  # You can reuse a VPC for multiple applications. In this case, we use one of our Free Templates for AWS CloudFormation (https://github.com/widdix/aws-cf-templates/tree/master/vpc).
   ParentVPCStack:
     Description: 'Stack name of parent VPC stack based on vpc/vpc-*azs.yaml template.'
     Type: String
-  # A bastion host increases the security of your system. In this case, we use on of our Free Templates for AWS CloudFormation (https://github.com/widdix/aws-cf-templates/tree/master/vpc).
+  # A bastion host increases the security of your system. In this case, we use one of our Free Templates for AWS CloudFormation (https://github.com/widdix/aws-cf-templates/tree/master/vpc).
   ParentSSHBastionStack:
     Description: 'Optional Stack name of parent SSH bastion host/instance stack based on vpc/vpc-ssh-bastion.yaml template.'
     Type: String
@@ -30,7 +30,7 @@ Parameters:
     Type: Number
     Default: 14
     AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653]
-  AdminEMail:
+  AdminEmail:
     Description: 'The email address of the admin who receives alerts.'
     Type: String
 Conditions:
@@ -38,14 +38,14 @@ Conditions:
   HasSSHBastionSecurityGroup: !Not [!Equals [!Ref ParentSSHBastionStack, '']]
   HasNotSSHBastionSecurityGroup: !Equals [!Ref ParentSSHBastionStack, '']
 Resources:
-  # A SNS topic is used to send alerts via EMail to the value of the AdminEMail parameter 
+  # A SNS topic is used to send alerts via Email to the value of the AdminEmail parameter 
   Alerts:
     Type: 'AWS::SNS::Topic'
     Properties:
       Subscription:
-      - Endpoint: !Ref AdminEMail
+      - Endpoint: !Ref AdminEmail
         Protocol: email
-  # The load balancer accepts HTTP traffic, therefore the firewall must allow incoming traffic on port 80.
+  # The load balancer accepts HTTP traffic. Therefore the firewall must allow incoming traffic on port 80.
   LoadBalancerSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
     Properties:
@@ -57,7 +57,7 @@ Resources:
         FromPort: 80
         ToPort: 80
         IpProtocol: tcp
-  # The load balancer need to run in public subnets because our users should be able to access the app from the Internet.
+  # The load balancer needs to run in public subnets because our users should be able to access the app from the Internet.
   LoadBalancer:
     Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
     Properties:
