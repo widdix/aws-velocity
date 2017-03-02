@@ -403,8 +403,8 @@ Resources:
     Properties:
       FilterPattern: Error
       LogGroupName: !Ref Logs
-      MetricTransformations":
-      - MetricName": AppErrors
+      MetricTransformations:
+      - MetricName: AppErrors
         MetricNamespace: !Ref 'AWS::StackName'
         MetricValue: 1
   # Sends an alert if the word Error was found in the logs
