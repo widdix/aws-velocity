@@ -76,7 +76,7 @@ Resources:
     Type: 'AWS::AutoScaling::LaunchConfiguration'
     Metadata:
       'AWS::CloudFormation::Init':
-        default:
+        config:
           files:
             '/etc/awslogs/awscli.conf':
               content: !Sub |
@@ -169,6 +169,8 @@ Resources:
       MinSize: 2
       MaxSize: 4
       DesiredCapacity: 2
+      HealthCheckGracePeriod: 300
+      HealthCheckType: ELB
       VPCZoneIdentifier: 
       - 'Fn::ImportValue': !Sub '${ParentVPCStack}-SubnetAPublic'
       - 'Fn::ImportValue': !Sub '${ParentVPCStack}-SubnetBPublic'
@@ -236,3 +238,14 @@ Resources:
       LoadBalancerArn: !Ref LoadBalancer
       Port: 80
       Protocol: HTTP
+Outputs:
+  DNSName:
+    Description: 'The DNS name for the load balancer.'
+    Value: !GetAtt 'LoadBalancer.DNSName'
+    Export:
+      Name: !Sub '${AWS::StackName}-DNSName'
+  URL:
+    Description: 'URL to the load balancer.'
+    Value: !Sub 'http://${LoadBalancer.DNSName}'
+    Export:
+      Name: !Sub '${AWS::StackName}-URL'
