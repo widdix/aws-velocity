@@ -81,6 +81,15 @@ Resources:
             Effect: 'Allow'
             Action: 's3:PutObject'
             Resource: '*'
+      - PolicyName: CloudFormation
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: CloudFormation
+            Effect: Allow
+            Action: 
+            - 'cloudformation:DescribeStacks'
+            Resource: !Sub 'arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${AWS::StackName}-acceptance/*'
   CodeBuildUser:
     DependsOn: CloudFormationRole
     Type: 'AWS::IAM::User'
@@ -139,7 +148,7 @@ Resources:
         Type: CODEPIPELINE
       Environment:
         ComputeType: 'BUILD_GENERAL1_SMALL'
-        Image: 'amazonlinux:2016.09'
+        Image: 'aws/codebuild/nodejs:6.3.1'
         Type: 'LINUX_CONTAINER'
       Name: !Sub '${AWS::StackName}-app'
       ServiceRole: !GetAtt 'CodeBuildRole.Arn'
@@ -148,10 +157,6 @@ Resources:
         BuildSpec: |
           version: 0.1
           phases:
-            install:
-              commands:
-              - 'curl --silent --location https://rpm.nodesource.com/setup_6.x | bash -'
-              - 'yum -y install nodejs'
             build:
               commands:
               - 'cd app/ && npm install'
@@ -175,7 +180,7 @@ Resources:
         Type: CODEPIPELINE
       Environment:
         ComputeType: 'BUILD_GENERAL1_SMALL'
-        Image: 'amazonlinux:2016.09'
+        Image: 'aws/codebuild/nodejs:6.3.1'
         Type: 'LINUX_CONTAINER'
       Name: !Sub '${AWS::StackName}-acceptance'
       ServiceRole: !GetAtt 'CodeBuildRole.Arn'
@@ -184,10 +189,6 @@ Resources:
         BuildSpec: |
           version: 0.1
           phases:
-            install:
-              commands:
-              - 'curl --silent --location https://rpm.nodesource.com/setup_6.x | bash -'
-              - 'yum -y install nodejs'
             build:
               commands:
               - 'cd acceptance/ && npm install'
@@ -243,6 +244,27 @@ Resources:
             files:
             - 'infrastructure/packer.txt'
             - 'infrastructure/ami.json'
+      TimeoutInMinutes: 10
+  RunAcceptanceProject:
+    DependsOn: CloudFormationRole
+    Type: 'AWS::CodeBuild::Project'
+    Properties:
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        ComputeType: 'BUILD_GENERAL1_SMALL'
+        Image: 'aws/codebuild/nodejs:6.3.1'
+        Type: 'LINUX_CONTAINER'
+      Name: !Sub '${AWS::StackName}-run-acceptance'
+      ServiceRole: !GetAtt 'CodeBuildRole.Arn'
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: !Sub |
+          version: 0.1
+          phases:
+            build:
+              commands:
+              - 'cd acceptance/ && ENDPOINT="$(aws cloudformation describe-stacks --stack-name ${AWS::StackName}-acceptance --query "Stacks[0].Outputs[?OutputKey=='URL'].OutputValue" --output text)" ./node_modules/.bin/jasmine-node .'
       TimeoutInMinutes: 10
   Pipeline:
     Type: 'AWS::CodePipeline::Pipeline'
@@ -346,3 +368,14 @@ Resources:
           - Name: Source
           - Name: AMI
           RunOrder: 1
+        - Name: Test
+          ActionTypeId:
+            Category: Build
+            Owner: AWS
+            Provider: CodeBuild
+            Version: 1
+          Configuration:
+            ProjectName: !Ref RunAcceptanceProject
+          InputArtifacts:
+          - Name: Acceptance
+          RunOrder: 2
