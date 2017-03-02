@@ -264,12 +264,24 @@ Resources:
                 file = /var/log/dmesg
                 log_stream_name = {instance_id}/var/log/dmesg
                 log_group_name = ${Logs}
+                [/var/log/forever.log]
+                file = /var/log/forever.log
+                log_stream_name = {instance_id}/var/log/forever.log
+                log_group_name = ${Logs}
+                [/var/log/app.out]
+                file = /var/log/app.out
+                log_stream_name = {instance_id}/var/log/app.out
+                log_group_name = ${Logs}
+                [/var/log/app.err]
+                file = /var/log/app.err
+                log_stream_name = {instance_id}/var/log/app.err
+                log_group_name = ${Logs}
               mode: '000644'
               owner: root
               group: root
           commands:
             'forever':
-              command: 'forever start index.js' # forever keeps the app (a Node.js script) up and running in the background
+              command: 'forever start -l /var/log/forever.log -o /var/log/app.out -e /var/log/app.err index.js' # forever keeps the app (a Node.js script) up and running in the background
               cwd: '/opt/app'
           services:
             sysvinit:
