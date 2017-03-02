@@ -1,0 +1,22 @@
+{
+  "variables": {
+    "ami_name": "{{env `CODEBUILD_BUILD_ID`}}"
+  },
+  "builders": [{
+    "type": "amazon-ebs",
+    "region": "eu-west-1",
+    "source_ami": "ami-c51e3eb6",
+    "instance_type": "t2.micro",
+    "ssh_username": "ec2-user",
+    "ami_name": "{{user `ami_name` | clean_ami_name}}",
+    "ami_regions": ["REGION"]
+  }],
+  "provisioners": [{
+    "type": "file",
+    "source": "app",
+    "destination": "/tmp"
+  }, {
+    "type": "shell",
+    "script": "infrastructure/packer.sh"
+  }]
+}

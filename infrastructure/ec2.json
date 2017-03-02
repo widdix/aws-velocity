@@ -1,0 +1,9 @@
+{
+  "Parameters": {
+    "ImageId": {"Fn::GetParam": ["AMI", "infrastructure/ami.json", "image"]},
+    "ParentVPCStack": "vpc-2azs",
+    "ParentSSHBastionStack": "",
+    "KeyName": "michael",
+    "AdminEmail": "michael@widdix.de"
+  }
+}

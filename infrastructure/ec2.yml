@@ -1,0 +1,436 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'EC2'
+Parameters:
+  # You can reuse a VPC for multiple applications. In this case, we use one of our Free Templates for AWS CloudFormation (https://github.com/widdix/aws-cf-templates/tree/master/vpc).
+  ParentVPCStack:
+    Description: 'Stack name of parent VPC stack based on vpc/vpc-*azs.yaml template.'
+    Type: String
+  # A bastion host increases the security of your system. In this case, we use one of our Free Templates for AWS CloudFormation (https://github.com/widdix/aws-cf-templates/tree/master/vpc).
+  ParentSSHBastionStack:
+    Description: 'Optional Stack name of parent SSH bastion host/instance stack based on vpc/vpc-ssh-bastion.yaml template.'
+    Type: String
+    Default: ''
+  # This is the simple way of getting SSH access to your EC2 instance. not the most secure way. If you want to have personalized users follow https://cloudonaut.io/manage-aws-ec2-ssh-access-with-iam/
+  KeyName:
+    Description: 'Optional key pair of the ec2-user to establish a SSH connection.'
+    Type: String
+    Default: ''
+  InstanceType:
+    Description: 'The instance type of web servers (e.g. t2.micro).'
+    Type: String
+    Default: 't2.micro'
+  # Where does this AMI comes from? It will be created in the pipeline!
+  ImageId:
+    Description: 'Unique ID of the Amazon Machine Image (AMI) to boot from.'
+    Type: String
+  # How long do you want to keep logs?
+  LogsRetentionInDays:
+    Description: 'Specifies the number of days you want to retain log events in the specified log group.'
+    Type: Number
+    Default: 14
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653]
+  AdminEmail:
+    Description: 'The email address of the admin who receives alerts.'
+    Type: String
+Conditions:
+  HasKeyName: !Not [!Equals [!Ref KeyName, '']]
+  HasSSHBastionSecurityGroup: !Not [!Equals [!Ref ParentSSHBastionStack, '']]
+  HasNotSSHBastionSecurityGroup: !Equals [!Ref ParentSSHBastionStack, '']
+Resources:
+  # A SNS topic is used to send alerts via Email to the value of the AdminEmail parameter 
+  Alerts:
+    Type: 'AWS::SNS::Topic'
+    Properties:
+      Subscription:
+      - Endpoint: !Ref AdminEmail
+        Protocol: email
+  # The load balancer accepts HTTP traffic. Therefore the firewall must allow incoming traffic on port 80.
+  LoadBalancerSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: 'load-balancer-sg'
+      VpcId:
+        'Fn::ImportValue': !Sub '${ParentVPCStack}-VPC'
+      SecurityGroupIngress:
+      - CidrIp: '0.0.0.0/0'
+        FromPort: 80
+        ToPort: 80
+        IpProtocol: tcp
+  # The load balancer needs to run in public subnets because our users should be able to access the app from the Internet.
+  LoadBalancer:
+    Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
+    Properties:
+      Scheme: 'internet-facing'
+      SecurityGroups:
+      - !Ref LoadBalancerSecurityGroup
+      Subnets:
+      - 'Fn::ImportValue': !Sub '${ParentVPCStack}-SubnetAPublic'
+      - 'Fn::ImportValue': !Sub '${ParentVPCStack}-SubnetBPublic'
+      Tags:
+      - Key: Name
+        Value: 'load-balancer'
+  # This alarm is triggered, if the load balancer responds with 5XX status codes
+  LoadBalancer5XXAlarm:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      EvaluationPeriods: 1
+      Statistic: Sum
+      Threshold: 0
+      AlarmDescription: 'Load balancer responds with 5XX status codes.'
+      Period: 60
+      AlarmActions:
+      - !Ref Alerts
+      Namespace: 'AWS/ApplicationELB'
+      Dimensions:
+      - Name: LoadBalancer
+        Value: !GetAtt 'LoadBalancer.LoadBalancerFullName'
+      ComparisonOperator: GreaterThanThreshold
+      MetricName: HTTPCode_ELB_5XX_Count
+  # This alarm is triggered, if the backend responds with 5XX status codes
+  LoadBalancerTargetGroup5XXAlarm:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      EvaluationPeriods: 1
+      Statistic: Sum
+      Threshold: 0
+      AlarmDescription: 'Load balancer target responds with 5XX status codes.'
+      Period: 60
+      AlarmActions:
+      - !Ref Alerts
+      Namespace: 'AWS/ApplicationELB'
+      Dimensions:
+      - Name: LoadBalancer
+        Value: !GetAtt 'LoadBalancer.LoadBalancerFullName'
+      ComparisonOperator: GreaterThanThreshold
+      MetricName: HTTPCode_Target_5XX_Count
+  # A target group groups a bunch of backend instances that receive traffic from the load balancer. the health check ensures that only working backends are used.
+  TargetGroup:
+    Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
+    Properties:
+      HealthCheckIntervalSeconds: 15
+      HealthCheckPath: '/5'
+      HealthCheckPort: 3000
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 8
+      Matcher:
+        HttpCode: 200
+      Port: 3000
+      Protocol: HTTP
+      Tags:
+      - Key: Name
+        Value: 'target-group'
+      VpcId:
+        'Fn::ImportValue': !Sub '${ParentVPCStack}-VPC'
+  # The load balancer should listen on port 80 for HTTP traffic
+  Listener:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Properties:
+      DefaultActions:
+      - TargetGroupArn: !Ref TargetGroup
+        Type: forward
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+  # The app listens on port 3000, but only the load balancer is allowed to send traffic to that port!
+  SecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: 'ec2-sg'
+      VpcId:
+        'Fn::ImportValue': !Sub '${ParentVPCStack}-VPC'
+      SecurityGroupIngress:
+      - SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
+        FromPort: 3000
+        ToPort: 3000
+        IpProtocol: tcp
+  # If the bastion host approach is enabled, traffic on port 22 is only allowed from the bastion host
+  SecurityGroupInSSHBastion:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Condition: HasSSHBastionSecurityGroup
+    Properties:
+      GroupId: !Ref SecurityGroup
+      IpProtocol: tcp
+      FromPort: 22
+      ToPort: 22
+      SourceSecurityGroupId:
+        'Fn::ImportValue': !Sub '${ParentSSHBastionStack}-SecurityGroup'
+  # Otherwise SSH is allowed from anywhere
+  SecurityGroupInSSHWorld:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Condition: HasNotSSHBastionSecurityGroup
+    Properties:
+      GroupId: !Ref SecurityGroup
+      IpProtocol: tcp
+      FromPort: 22
+      ToPort: 22
+      CidrIp: '0.0.0.0/0'
+  InstanceProfile:
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      Path: '/'
+      Roles:
+      - !Ref Role
+  # The EC2 instance needs permissions to make requests to the CloudWatch Logs service to deliver logs.
+  Role:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: 'ec2.amazonaws.com'
+          Action: 'sts:AssumeRole'
+      Path: '/'
+      Policies:
+      - PolicyName: logs
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - 'logs:CreateLogGroup'
+            - 'logs:CreateLogStream'
+            - 'logs:PutLogEvents'
+            - 'logs:DescribeLogStreams'
+            Resource: 'arn:aws:logs:*:*:*'
+  # Log files that reside on EC2 instances must be avoided because instances come and go depending on load. CloudWatch Logs provides a centralized way to store and search logs.
+  Logs:
+    Type: 'AWS::Logs::LogGroup'
+    Properties:
+      RetentionInDays: !Ref LogsRetentionInDays
+  LaunchConfiguration:
+    Type: 'AWS::AutoScaling::LaunchConfiguration'
+    Metadata:
+      'AWS::CloudFormation::Init': # Configuration for the cfn-ini helper script that runs on startup. This is only needed for the dynamic configuration. The rest is backed into the AMI in the pipeline.
+        config:
+          files:
+            '/etc/awslogs/awscli.conf': # configuration file for the CloudWatch Logs agent that ships logs to the service
+              content: !Sub |
+                [default]
+                region = ${AWS::Region}
+                [plugins]
+                cwlogs = cwlogs
+              mode: '000644'
+              owner: root
+              group: root
+            '/etc/awslogs/awslogs.conf': # configuration file for the CloudWatch Logs agent that ships logs to the service
+              content: !Sub |
+                [general]
+                state_file = /var/lib/awslogs/agent-state
+                [/var/log/messages]
+                datetime_format = %b %d %H:%M:%S
+                file = /var/log/messages
+                log_stream_name = {instance_id}/var/log/messages
+                log_group_name = ${Logs}
+                [/var/log/secure]
+                datetime_format = %b %d %H:%M:%S
+                file = /var/log/secure
+                log_stream_name = {instance_id}/var/log/secure
+                log_group_name = ${Logs}
+                [/var/log/cron]
+                datetime_format = %b %d %H:%M:%S
+                file = /var/log/cron
+                log_stream_name = {instance_id}/var/log/cron
+                log_group_name = ${Logs}
+                [/var/log/cloud-init.log]
+                datetime_format = %b %d %H:%M:%S
+                file = /var/log/cloud-init.log
+                log_stream_name = {instance_id}/var/log/cloud-init.log
+                log_group_name = ${Logs}
+                [/var/log/cfn-init.log]
+                datetime_format = %Y-%m-%d %H:%M:%S
+                file = /var/log/cfn-init.log
+                log_stream_name = {instance_id}/var/log/cfn-init.log
+                log_group_name = ${Logs}
+                [/var/log/cfn-hup.log]
+                datetime_format = %Y-%m-%d %H:%M:%S
+                file = /var/log/cfn-hup.log
+                log_stream_name = {instance_id}/var/log/cfn-hup.log
+                log_group_name = ${Logs}
+                [/var/log/cfn-init-cmd.log]
+                datetime_format = %Y-%m-%d %H:%M:%S
+                file = /var/log/cfn-init-cmd.log
+                log_stream_name = {instance_id}/var/log/cfn-init-cmd.log
+                log_group_name = ${Logs}
+                [/var/log/cloud-init-output.log]
+                file = /var/log/cloud-init-output.log
+                log_stream_name = {instance_id}/var/log/cloud-init-output.log
+                log_group_name = ${Logs}
+                [/var/log/dmesg]
+                file = /var/log/dmesg
+                log_stream_name = {instance_id}/var/log/dmesg
+                log_group_name = ${Logs}
+                [/var/log/forever.log]
+                file = /var/log/forever.log
+                log_stream_name = {instance_id}/var/log/forever.log
+                log_group_name = ${Logs}
+                [/var/log/app.out]
+                file = /var/log/app.out
+                log_stream_name = {instance_id}/var/log/app.out
+                log_group_name = ${Logs}
+                [/var/log/app.err]
+                file = /var/log/app.err
+                log_stream_name = {instance_id}/var/log/app.err
+                log_group_name = ${Logs}
+              mode: '000644'
+              owner: root
+              group: root
+          commands:
+            'forever':
+              command: 'forever start -l /var/log/forever.log -o /var/log/app.out -e /var/log/app.err index.js' # forever keeps the app (a Node.js script) up and running in the background
+              cwd: '/opt/app'
+          services:
+            sysvinit:
+              awslogs: # start the CloudWatch Logs agent
+                enabled: true
+                ensureRunning: true
+                files:
+                - '/etc/awslogs/awslogs.conf'
+                - '/etc/awslogs/awscli.conf'
+    Properties:
+      ImageId: !Ref ImageId # the image that is created during the build in the pipeline passed in as a parameter
+      IamInstanceProfile: !Ref InstanceProfile
+      InstanceType: !Ref InstanceType
+      SecurityGroups:
+      - !Ref SecurityGroup
+      KeyName: !If [HasKeyName, !Ref KeyName, !Ref 'AWS::NoValue']
+      UserData: # execute cfn-init helper script and signal success or failure back to CloudFormation
+        'Fn::Base64': !Sub |
+          #!/bin/bash -x
+          /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource LaunchConfiguration --region ${AWS::Region}
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource AutoScalingGroup --region ${AWS::Region}
+  AutoScalingGroup:
+    Type: 'AWS::AutoScaling::AutoScalingGroup'
+    Properties:
+      LaunchConfigurationName: !Ref LaunchConfiguration
+      MinSize: 2 # at least two instances should always be running
+      MaxSize: 4 # at most 4 instances are allowed to run
+      DesiredCapacity: 2 # you want to start with 2 instances
+      HealthCheckGracePeriod: 300
+      HealthCheckType: ELB # make use of the health check of the load balancer which checks the application health instead of only checking the instance health
+      VPCZoneIdentifier: 
+      - 'Fn::ImportValue': !Sub '${ParentVPCStack}-SubnetAPublic'
+      - 'Fn::ImportValue': !Sub '${ParentVPCStack}-SubnetBPublic'
+      TargetGroupARNs:
+      - !Ref TargetGroup # automatically (de)register instances with the target group of the load balancer
+      Tags:
+      - Key: Name
+        Value: 'ec2'
+        PropagateAtLaunch: true
+    CreationPolicy: # wait up to 15 minutes to receive a success signal during instance startup
+      ResourceSignal:
+        Timeout: PT15M
+    UpdatePolicy: # this allows rolling updates if a change requires new EC2 instances
+      AutoScalingRollingUpdate:
+        PauseTime: PT15M
+        WaitOnResourceSignals: true
+  # Increase the number of instances by 25% but at least by one not more often than every 10 minutes.
+  ScalingUpPolicy:
+    Type: 'AWS::AutoScaling::ScalingPolicy'
+    Properties:
+      AdjustmentType: PercentChangeInCapacity
+      MinAdjustmentStep: 1
+      AutoScalingGroupName: !Ref AutoScalingGroup
+      Cooldown: 600
+      ScalingAdjustment: 25
+  # Decrease the number of instances by 25% but at least by one one not more often than every 15 minutes.
+  ScalingDownPolicy:
+    Type: 'AWS::AutoScaling::ScalingPolicy'
+    Properties:
+      AdjustmentType: PercentChangeInCapacity
+      MinAdjustmentStep: 1
+      AutoScalingGroupName: !Ref AutoScalingGroup
+      Cooldown: 900
+      ScalingAdjustment: -25
+  # Trigger the ScalingUpPolicy if the average CPU load of the past 5 minutes is higher than 70%
+  CPUHighAlarm:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      EvaluationPeriods: 1
+      Statistic: Average
+      Threshold: 70
+      AlarmDescription: 'CPU load is high.'
+      Period: 300
+      AlarmActions:
+      - !Ref ScalingUpPolicy
+      Namespace: 'AWS/EC2'
+      Dimensions:
+      - Name: AutoScalingGroupName
+        Value: !Ref AutoScalingGroup
+      ComparisonOperator: GreaterThanThreshold
+      MetricName: CPUUtilization
+  # Trigger the ScalingDownPolicy if the average CPU load of the past 5 minutes is lower than 30% for 3 consecutive times
+  CPULowAlarm:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      EvaluationPeriods: 3
+      Statistic: Average
+      Threshold: 30
+      AlarmDescription: 'CPU load is low.'
+      Period: 300
+      AlarmActions:
+      - !Ref ScalingDownPolicy
+      Namespace: 'AWS/EC2'
+      Dimensions:
+      - Name: AutoScalingGroupName
+        Value: !Ref AutoScalingGroup
+      ComparisonOperator: LessThanThreshold
+      MetricName: CPUUtilization
+  # Sends an alert if the average CPU load of the past 5 minutes is higher than 85%
+  CPUTooHighAlarm:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      EvaluationPeriods: 1
+      Statistic: Average
+      Threshold: 85
+      AlarmDescription: 'CPU load is too high.'
+      Period: 300
+      AlarmActions:
+      - !Ref Alerts
+      Namespace: 'AWS/EC2'
+      Dimensions:
+      - Name: AutoScalingGroupName
+        Value: !Ref AutoScalingGroup
+      ComparisonOperator: GreaterThanThreshold
+      MetricName: CPUUtilization
+  # Filters all logs for the word Error
+  AppErrorsLogsFilter:
+    Type: 'AWS::Logs::MetricFilter'
+    Properties:
+      FilterPattern: Error
+      LogGroupName: !Ref Logs
+      MetricTransformations:
+      - MetricName: AppErrors
+        MetricNamespace: !Ref 'AWS::StackName'
+        MetricValue: 1
+  # Sends an alert if the word Error was found in the logs
+  AppErrorsAlarm:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmDescription: 'application errors in logs'
+      Namespace: !Ref 'AWS::StackName'
+      MetricName: AppErrors
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+      - !Ref Alerts
+# A CloudFormation stack can return information that is needed by other stacks or scripts.
+Outputs:
+  DNSName:
+    Description: 'The DNS name for the load balancer.'
+    Value: !GetAtt 'LoadBalancer.DNSName'
+    Export:
+      Name: !Sub '${AWS::StackName}-DNSName'
+  # The URL is needed to run the acceptance test against the correct endpoint
+  URL:
+    Description: 'URL to the load balancer.'
+    Value: !Sub 'http://${LoadBalancer.DNSName}'
+    Export:
+      Name: !Sub '${AWS::StackName}-URL'
