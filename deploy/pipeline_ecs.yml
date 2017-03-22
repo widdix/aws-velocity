@@ -84,6 +84,54 @@ Resources:
             Effect: 'Allow'
             Action: 's3:PutObject'
             Resource: '*'
+  RunAcceptanceCodeBuildRole:
+    DependsOn: CloudFormationRole # make sure that CloudFormationRole is deleted last
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - 'codebuild.amazonaws.com'
+          Action:
+          - 'sts:AssumeRole'
+      Policies:
+      - PolicyName: ServiceRole
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: CloudWatchLogsPolicy
+            Effect: Allow
+            Action: 
+            - 'logs:CreateLogGroup'
+            - 'logs:CreateLogStream'
+            - 'logs:PutLogEvents'
+            Resource: '*'
+          - Sid: CodeCommitPolicy
+            Effect: Allow
+            Action: 'codecommit:GitPull'
+            Resource: '*'
+          - Sid: S3GetObjectPolicy
+            Effect: Allow
+            Action: 
+            - 's3:GetObject'
+            - 's3:GetObjectVersion'
+            Resource: '*'
+          - Sid: S3PutObjectPolicy
+            Effect: 'Allow'
+            Action: 's3:PutObject'
+            Resource: '*'
+      - PolicyName: CloudFormation
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: CloudFormation
+            Effect: Allow
+            Action: 
+            - 'cloudformation:DescribeStacks'
+            Resource: !Sub 'arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${AWS::StackName}-acceptance/*'
   ImageCodeBuildRole:
     DependsOn: CloudFormationRole # make sure that CloudFormationRole is deleted last
     Type: 'AWS::IAM::Role'
@@ -227,6 +275,27 @@ Resources:
             - 'infrastructure/image.json'
             - 'infrastructure/image.txt'
       TimeoutInMinutes: 10
+  RunAcceptanceProject:
+    DependsOn: CloudFormationRole # make sure that CloudFormationRole is deleted last
+    Type: 'AWS::CodeBuild::Project'
+    Properties:
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        ComputeType: 'BUILD_GENERAL1_SMALL'
+        Image: 'aws/codebuild/nodejs:6.3.1'
+        Type: 'LINUX_CONTAINER'
+      Name: !Sub '${AWS::StackName}-run-acceptance'
+      ServiceRole: !GetAtt 'RunAcceptanceCodeBuildRole.Arn'
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: !Sub |
+          version: 0.1
+          phases:
+            build: # execute acceptance tests against the acceptance stack
+              commands:
+              - 'cd acceptance/ && ENDPOINT=`aws cloudformation describe-stacks --stack-name ${AWS::StackName}-acceptance --query "Stacks[0].Outputs[?OutputKey==''URL''].OutputValue" --output text` ./node_modules/jasmine-node/bin/jasmine-node .'
+      TimeoutInMinutes: 10
   Pipeline:
     Type: 'AWS::CodePipeline::Pipeline'
     Properties:
@@ -325,7 +394,36 @@ Resources:
             StackName: !Sub '${AWS::StackName}-acceptance'
             TemplatePath: 'Source::infrastructure/ecs.yml'
             TemplateConfiguration: 'Source::infrastructure/ecs.json'
-            ParameterOverrides: !Sub '{"LoadBalancerPath": "${AWS::StackName}-acceptance"}'
+          InputArtifacts:
+          - Name: Source
+          - Name: Image
+          RunOrder: 1
+        - Name: Test
+          ActionTypeId:
+            Category: Build
+            Owner: AWS
+            Provider: CodeBuild
+            Version: 1
+          Configuration:
+            ProjectName: !Ref RunAcceptanceProject
+          InputArtifacts:
+          - Name: Acceptance
+          RunOrder: 2
+      - Name: Production
+        Actions:
+        - Name: Deploy
+          ActionTypeId:
+            Category: Deploy
+            Owner: AWS
+            Provider: CloudFormation
+            Version: 1
+          Configuration:
+            ActionMode: CREATE_UPDATE
+            Capabilities: CAPABILITY_IAM
+            RoleArn: !GetAtt 'CloudFormationRole.Arn'
+            StackName: !Sub '${AWS::StackName}-production'
+            TemplatePath: 'Source::infrastructure/ecs.yml'
+            TemplateConfiguration: 'Source::infrastructure/ecs.json'
           InputArtifacts:
           - Name: Source
           - Name: Image
