@@ -65,6 +65,9 @@ Parameters:
     Default: 2
     ConstraintDescription: 'Must be >= 1'
     MinValue: 1
+  AdminEmail:
+    Description: 'The email address of the admin who receives alerts.'
+    Type: String
 Mappings: {}
 Conditions:
   HasAuthProxySecurityGroup: !Not [!Equals [!Ref ParentAuthProxyStack, '']]
@@ -74,6 +77,13 @@ Conditions:
   HasAuthProxySecurityGroupAndLoadBalancerCertificateArn: !And [!Condition HasAuthProxySecurityGroup, !Condition HasLoadBalancerCertificateArn]
   HasNotAuthProxySecurityGroupAndLoadBalancerCertificateArn: !And [!Condition HasNotAuthProxySecurityGroup, !Condition HasLoadBalancerCertificateArn]
 Resources:
+  # A SNS topic is used to send alerts via Email to the value of the AdminEmail parameter 
+  Alerts:
+    Type: 'AWS::SNS::Topic'
+    Properties:
+      Subscription:
+      - Endpoint: !Ref AdminEmail
+        Protocol: email
   TaskDefinition:
     Type: 'AWS::ECS::TaskDefinition'
     Properties: 
@@ -194,7 +204,40 @@ Resources:
         Type: forward
       LoadBalancerArn: !Ref LoadBalancer
       Port: 443
-      Protocol: HTTPS
+      Protocol: HTTPS# This alarm is triggered, if the load balancer responds with 5XX status codes
+  LoadBalancer5XXAlarm:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      EvaluationPeriods: 1
+      Statistic: Sum
+      Threshold: 0
+      AlarmDescription: 'Load balancer responds with 5XX status codes.'
+      Period: 60
+      AlarmActions:
+      - !Ref Alerts
+      Namespace: 'AWS/ApplicationELB'
+      Dimensions:
+      - Name: LoadBalancer
+        Value: !GetAtt 'LoadBalancer.LoadBalancerFullName'
+      ComparisonOperator: GreaterThanThreshold
+      MetricName: HTTPCode_ELB_5XX_Count
+  # This alarm is triggered, if the backend responds with 5XX status codes
+  LoadBalancerTargetGroup5XXAlarm:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      EvaluationPeriods: 1
+      Statistic: Sum
+      Threshold: 0
+      AlarmDescription: 'Load balancer target responds with 5XX status codes.'
+      Period: 60
+      AlarmActions:
+      - !Ref Alerts
+      Namespace: 'AWS/ApplicationELB'
+      Dimensions:
+      - Name: LoadBalancer
+        Value: !GetAtt 'LoadBalancer.LoadBalancerFullName'
+      ComparisonOperator: GreaterThanThreshold
+      MetricName: HTTPCode_Target_5XX_Count
   ServiceRole:
     Type: 'AWS::IAM::Role'
     Properties:
@@ -307,7 +350,7 @@ Resources:
       Statistic: Average
       Period: 60
       EvaluationPeriods: 1
-      Threshold: 80
+      Threshold: 70
       AlarmActions:
       - !Ref ScaleUpPolicy
   CPUUtilizationLowAlarm:
@@ -326,9 +369,29 @@ Resources:
       Statistic: Average
       Period: 60
       EvaluationPeriods: 1
-      Threshold: 20
+      Threshold: 30
       AlarmActions:
       - !Ref ScaleDownPolicy
+  # Sends an alert if the average CPU load of the past 5 minutes is higher than 85%
+  CPUTooHighAlarm:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmDescription: 'Service is running out of CPU'
+      Namespace: 'AWS/ECS'
+      Dimensions:
+      - Name: ClusterName
+        Value:
+          'Fn::ImportValue': !Sub '${ParentClusterStack}-Cluster'
+      - Name: ServiceName
+        Value: !GetAtt 'Service.Name'
+      MetricName: CPUUtilization
+      ComparisonOperator: GreaterThanThreshold
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 85
+      AlarmActions:
+      - !Ref Alerts
 Outputs:
   TemplateID:
     Description: 'cloudonaut.io template id'
