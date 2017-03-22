@@ -1,0 +1,7 @@
+{
+  "Parameters": {
+    "ParentClusterStack": "ecs-cluster",
+    "LoadBalancerPath": "service",
+    "Image": {"Fn::GetParam": ["Image", "infrastructure/image.json", "image"]}
+  }
+}
