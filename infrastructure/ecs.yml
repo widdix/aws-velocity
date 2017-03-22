@@ -1,28 +1,15 @@
 ---
 AWSTemplateFormatVersion: '2010-09-09'
 Description: 'ECS: service that runs on an ECS cluster based on ecs/cluster.yaml and uses a dedicated ALB, a cloudonaut.io template'
-Metadata:
-  'AWS::CloudFormation::Interface':
-    ParameterGroups:
-    - Label:
-        default: 'Parent Stacks'
-      Parameters:
-      - ParentVPCStack
-      - ParentClusterStack
-    - Label:
-        default: 'Task Parameters'
-      Parameters:
-      - Image
-      - DesiredCount
-      - MaxCapacity
-      - MinCapacity
 Parameters:
+  # You can reuse a VPC for multiple applications. In this case, we use one of our Free Templates for AWS CloudFormation (https://github.com/widdix/aws-cf-templates/tree/master/vpc).
   ParentVPCStack:
     Description: 'Stack name of parent VPC stack based on vpc/vpc-*azs.yaml template.'
     Type: String
   ParentClusterStack:
     Description: 'Stack name of parent Cluster stack based on ecs/cluster.yaml template.'
     Type: String
+  # Where does this Docker image comes from? It will be created in the pipeline!
   Image:
     Description: 'The image to use for a container, which is passed directly to the Docker daemon. You can use images in the Docker Hub registry or specify other repositories (repository-url/image:tag).'
     Type: String
@@ -55,64 +42,19 @@ Resources:
       Subscription:
       - Endpoint: !Ref AdminEmail
         Protocol: email
-  TaskDefinition:
-    Type: 'AWS::ECS::TaskDefinition'
-    Properties: 
-      Family: !Ref 'AWS::StackName'
-      NetworkMode: bridge
-      ContainerDefinitions:
-      - Name: main # if you change this, you also must change the AWS::ECS::Service
-        Image: !Ref Image
-        Memory: 128
-        PortMappings:
-        - ContainerPort: 3000 # if you change this, you also must change the AWS::ECS::Service
-          Protocol: tcp
-        Essential: true
-        LogConfiguration:
-          LogDriver: awslogs
-          Options:
-            'awslogs-region': !Ref 'AWS::Region'
-            'awslogs-group':
-              'Fn::ImportValue': !Sub '${ParentClusterStack}-LogGroup'
-            'awslogs-stream-prefix': !Ref 'AWS::StackName'
+  # The load balancer accepts HTTP traffic. Therefore the firewall must allow incoming traffic on port 80.
   ALBSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
     Properties:
       GroupDescription: 'ecs-cluster-alb'
       VpcId:
         'Fn::ImportValue': !Sub '${ParentVPCStack}-VPC'
-  ALBSecurityGroupInHttp:
-    Type: 'AWS::EC2::SecurityGroupIngress'
-    Properties:
-      GroupId: !Ref ALBSecurityGroup
-      IpProtocol: tcp
-      FromPort: 80
-      ToPort: 80
-      CidrIp: '0.0.0.0/0'
-  SecurityGroupInALB:
-    Type: 'AWS::EC2::SecurityGroupIngress'
-    Properties:
-      GroupId:
-        'Fn::ImportValue': !Sub '${ParentClusterStack}-SecurityGroup'
-      IpProtocol: tcp
-      FromPort: 0
-      ToPort: 65535
-      SourceSecurityGroupId: !Ref ALBSecurityGroup
-  DefaultTargetGroup:
-    Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
-    Properties:
-      HealthCheckIntervalSeconds: 15
-      HealthCheckPath: '/1'
-      HealthCheckProtocol: HTTP
-      HealthCheckTimeoutSeconds: 10
-      HealthyThresholdCount: 2
-      Matcher:
-        HttpCode: '200'
-      Port: 80
-      Protocol: HTTP
-      UnhealthyThresholdCount: 4
-      VpcId:
-        'Fn::ImportValue': !Sub '${ParentVPCStack}-VPC'
+      SecurityGroupIngress:
+      - CidrIp: '0.0.0.0/0'
+        FromPort: 80
+        ToPort: 80
+        IpProtocol: tcp
+  # The load balancer needs to run in public subnets because our users should be able to access the app from the Internet.
   LoadBalancer:
     Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
     Properties:
@@ -122,15 +64,7 @@ Resources:
       Subnets: 
       - 'Fn::ImportValue': !Sub '${ParentVPCStack}-SubnetAPublic'
       - 'Fn::ImportValue': !Sub '${ParentVPCStack}-SubnetBPublic'
-  HttpListener:
-    Type: 'AWS::ElasticLoadBalancingV2::Listener'
-    Properties:
-      DefaultActions:
-      - TargetGroupArn: !Ref DefaultTargetGroup
-        Type: forward
-      LoadBalancerArn: !Ref LoadBalancer
-      Port: 80
-      Protocol: HTTP
+  # This alarm is triggered, if the load balancer responds with 5XX status codes
   LoadBalancer5XXAlarm:
     Type: 'AWS::CloudWatch::Alarm'
     Properties:
@@ -164,6 +98,52 @@ Resources:
         Value: !GetAtt 'LoadBalancer.LoadBalancerFullName'
       ComparisonOperator: GreaterThanThreshold
       MetricName: HTTPCode_Target_5XX_Count
+  # A target group groups a bunch of backend instances that receive traffic from the load balancer. the health check ensures that only working backends are used.
+  DefaultTargetGroup:
+    Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
+    Properties:
+      HealthCheckIntervalSeconds: 15
+      HealthCheckPath: '/1'
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 2
+      Matcher:
+        HttpCode: '200'
+      Port: 80
+      Protocol: HTTP
+      UnhealthyThresholdCount: 4
+      VpcId:
+        'Fn::ImportValue': !Sub '${ParentVPCStack}-VPC'
+  # The load balancer should listen on port 80 for HTTP traffic
+  HttpListener:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Properties:
+      DefaultActions:
+      - TargetGroupArn: !Ref DefaultTargetGroup
+        Type: forward
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+  TaskDefinition:
+    Type: 'AWS::ECS::TaskDefinition'
+    Properties: 
+      Family: !Ref 'AWS::StackName'
+      NetworkMode: bridge
+      ContainerDefinitions:
+      - Name: main # if you change this, you also must change the AWS::ECS::Service
+        Image: !Ref Image
+        Memory: 128
+        PortMappings:
+        - ContainerPort: 3000 # if you change this, you also must change the AWS::ECS::Service
+          Protocol: tcp
+        Essential: true
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            'awslogs-region': !Ref 'AWS::Region'
+            'awslogs-group':
+              'Fn::ImportValue': !Sub '${ParentClusterStack}-LogGroup'
+            'awslogs-stream-prefix': !Ref 'AWS::StackName'
   ServiceRole:
     Type: 'AWS::IAM::Role'
     Properties:
