@@ -42,6 +42,15 @@ Resources:
       Subscription:
       - Endpoint: !Ref AdminEmail
         Protocol: email
+  SecurityGroupInALB:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      GroupId:
+        'Fn::ImportValue': !Sub '${ParentClusterStack}-SecurityGroup'
+      IpProtocol: tcp
+      FromPort: 0
+      ToPort: 65535
+      SourceSecurityGroupId: !Ref ALBSecurityGroup
   # The load balancer accepts HTTP traffic. Therefore the firewall must allow incoming traffic on port 80.
   ALBSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
