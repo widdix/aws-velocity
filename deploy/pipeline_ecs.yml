@@ -220,8 +220,8 @@ Resources:
             post_build:
               commands:
               - 'eval $(aws ecr get-login) && docker push ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ArtifactsRepository}:${!CODEBUILD_BUILD_ID#*:}'
-              - 'echo "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ArtifactsRepository}:${!CODEBUILD_BUILD_ID#*:}" > infrastructure/image.txt
-              - 'echo "{\"image\": \"${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ArtifactsRepository}:${!CODEBUILD_BUILD_ID#*:}\"}" > infrastructure/image.json
+              - 'echo "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ArtifactsRepository}:${!CODEBUILD_BUILD_ID#*:}" > infrastructure/image.txt'
+              - 'echo "{\"image\": \"${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ArtifactsRepository}:${!CODEBUILD_BUILD_ID#*:}\"}" > infrastructure/image.json'
           artifacts:
             files:
             - 'infrastructure/image.json'
@@ -325,6 +325,7 @@ Resources:
             StackName: !Sub '${AWS::StackName}-acceptance'
             TemplatePath: 'Source::infrastructure/ecs.yml'
             TemplateConfiguration: 'Source::infrastructure/ecs.json'
+            ParameterOverrides: !Sub '{"LoadBalancerPath": "${AWS::StackName}-acceptance"}'
           InputArtifacts:
           - Name: Source
           - Name: Image
