@@ -42,6 +42,7 @@ Resources:
       Subscription:
       - Endpoint: !Ref AdminEmail
         Protocol: email
+  # Allow traffic from the load balancer to the EC2 instances in the cluster. This is only necessary because we reuse the cluster template in the way it is!
   SecurityGroupInALB:
     Type: 'AWS::EC2::SecurityGroupIngress'
     Properties:
@@ -153,6 +154,7 @@ Resources:
             'awslogs-group':
               'Fn::ImportValue': !Sub '${ParentClusterStack}-LogGroup'
             'awslogs-stream-prefix': !Ref 'AWS::StackName'
+  # The role is empty, so the container has no access rights at the moment
   ServiceRole:
     Type: 'AWS::IAM::Role'
     Properties:
@@ -307,10 +309,8 @@ Resources:
       Threshold: 85
       AlarmActions:
       - !Ref Alerts
+# A CloudFormation stack can return information that is needed by other stacks or scripts.
 Outputs:
-  TemplateID:
-    Description: 'cloudonaut.io template id'
-    Value: 'ecs/service-dedicated-alb'
   DNSName:
     Description: 'The DNS name for the ECS cluster/service load balancer.'
     Value: !GetAtt 'LoadBalancer.DNSName'

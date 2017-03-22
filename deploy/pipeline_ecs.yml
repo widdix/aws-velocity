@@ -369,7 +369,7 @@ Resources:
           OutputArtifacts:
           - Name: Acceptance
           RunOrder: 1
-        - Name: CreateImage
+        - Name: BuildImage
           ActionTypeId:
             Category: Build
             Owner: AWS
