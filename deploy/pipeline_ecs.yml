@@ -165,6 +165,7 @@ Resources:
           artifacts:
             files:
             - 'app/**/*'
+            - 'infrastructure/Dockerfile' # this is a hack because we can not pass multiple Arifacts as an input to CodeBuild at the moment
       TimeoutInMinutes: 10
   AcceptanceProject:
     DependsOn: CloudFormationRole # make sure that CloudFormationRole is deleted last
