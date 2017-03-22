@@ -1,5 +1,6 @@
 FROM amazonlinux:2016.09
 
+RUN yum -y update
 RUN curl --silent --location https://rpm.nodesource.com/setup_6.x | bash -
 RUN yum -y install nodejs
 
