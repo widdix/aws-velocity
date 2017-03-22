@@ -9,12 +9,6 @@ Metadata:
       Parameters:
       - ParentVPCStack
       - ParentClusterStack
-      - ParentAuthProxyStack
-    - Label:
-        default: 'Load Balancer Parameters'
-      Parameters:
-      - LoadBalancerScheme
-      - LoadBalancerCertificateArn
     - Label:
         default: 'Task Parameters'
       Parameters:
@@ -29,21 +23,6 @@ Parameters:
   ParentClusterStack:
     Description: 'Stack name of parent Cluster stack based on ecs/cluster.yaml template.'
     Type: String
-  ParentAuthProxyStack:
-    Description: 'Optional Stack name of parent auth proxy stack based on security/auth-proxy-*.yaml template.'
-    Type: String
-    Default: ''
-  LoadBalancerScheme:
-    Description: 'Indicates whether the load balancer in front of the ECS cluster is internet-facing or internal.'
-    Type: String
-    Default: 'internet-facing'
-    AllowedValues:
-    - 'internet-facing'
-    - internal
-  LoadBalancerCertificateArn:
-    Description: 'Optional Amazon Resource Name (ARN) of the certificate to associate with the load balancer.'
-    Type: String
-    Default: ''
   Image:
     Description: 'The image to use for a container, which is passed directly to the Docker daemon. You can use images in the Docker Hub registry or specify other repositories (repository-url/image:tag).'
     Type: String
@@ -68,14 +47,6 @@ Parameters:
   AdminEmail:
     Description: 'The email address of the admin who receives alerts.'
     Type: String
-Mappings: {}
-Conditions:
-  HasAuthProxySecurityGroup: !Not [!Equals [!Ref ParentAuthProxyStack, '']]
-  HasNotAuthProxySecurityGroup: !Equals [!Ref ParentAuthProxyStack, '']
-  HasLoadBalancerSchemeInternal: !Equals [!Ref LoadBalancerScheme, 'internal']
-  HasLoadBalancerCertificateArn: !Not [!Equals [!Ref LoadBalancerCertificateArn, '']]
-  HasAuthProxySecurityGroupAndLoadBalancerCertificateArn: !And [!Condition HasAuthProxySecurityGroup, !Condition HasLoadBalancerCertificateArn]
-  HasNotAuthProxySecurityGroupAndLoadBalancerCertificateArn: !And [!Condition HasNotAuthProxySecurityGroup, !Condition HasLoadBalancerCertificateArn]
 Resources:
   # A SNS topic is used to send alerts via Email to the value of the AdminEmail parameter 
   Alerts:
@@ -110,44 +81,14 @@ Resources:
       GroupDescription: 'ecs-cluster-alb'
       VpcId:
         'Fn::ImportValue': !Sub '${ParentVPCStack}-VPC'
-  ALBSecurityGroupInHttpWorld:
+  ALBSecurityGroupInHttp:
     Type: 'AWS::EC2::SecurityGroupIngress'
-    Condition: HasNotAuthProxySecurityGroup
     Properties:
       GroupId: !Ref ALBSecurityGroup
       IpProtocol: tcp
       FromPort: 80
       ToPort: 80
       CidrIp: '0.0.0.0/0'
-  ALBSecurityGroupInHttpsWorld:
-    Type: 'AWS::EC2::SecurityGroupIngress'
-    Condition: HasNotAuthProxySecurityGroupAndLoadBalancerCertificateArn
-    Properties:
-      GroupId: !Ref ALBSecurityGroup
-      IpProtocol: tcp
-      FromPort: 443
-      ToPort: 443
-      CidrIp: '0.0.0.0/0'
-  ALBSecurityGroupInHttpAuthProxy:
-    Type: 'AWS::EC2::SecurityGroupIngress'
-    Condition: HasAuthProxySecurityGroup
-    Properties:
-      GroupId: !Ref ALBSecurityGroup
-      IpProtocol: tcp
-      FromPort: 80
-      ToPort: 80
-      SourceSecurityGroupId:
-        'Fn::ImportValue': !Sub '${ParentAuthProxyStack}-SecurityGroup'
-  ALBSecurityGroupInHttpsAuthProxy:
-    Type: 'AWS::EC2::SecurityGroupIngress'
-    Condition: HasAuthProxySecurityGroupAndLoadBalancerCertificateArn
-    Properties:
-      GroupId: !Ref ALBSecurityGroup
-      IpProtocol: tcp
-      FromPort: 443
-      ToPort: 443
-      SourceSecurityGroupId:
-        'Fn::ImportValue': !Sub '${ParentAuthProxyStack}-SecurityGroup'
   SecurityGroupInALB:
     Type: 'AWS::EC2::SecurityGroupIngress'
     Properties:
@@ -175,15 +116,12 @@ Resources:
   LoadBalancer:
     Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
     Properties:
-      Scheme: !Ref LoadBalancerScheme
+      Scheme: 'internet-facing'
       SecurityGroups:
       - !Ref ALBSecurityGroup
-      Subnets: !If
-      - HasLoadBalancerSchemeInternal
-      - - 'Fn::ImportValue': !Sub '${ParentVPCStack}-SubnetAPrivate'
-        - 'Fn::ImportValue': !Sub '${ParentVPCStack}-SubnetBPrivate'
-      - - 'Fn::ImportValue': !Sub '${ParentVPCStack}-SubnetAPublic'
-        - 'Fn::ImportValue': !Sub '${ParentVPCStack}-SubnetBPublic'
+      Subnets: 
+      - 'Fn::ImportValue': !Sub '${ParentVPCStack}-SubnetAPublic'
+      - 'Fn::ImportValue': !Sub '${ParentVPCStack}-SubnetBPublic'
   HttpListener:
     Type: 'AWS::ElasticLoadBalancingV2::Listener'
     Properties:
@@ -193,18 +131,6 @@ Resources:
       LoadBalancerArn: !Ref LoadBalancer
       Port: 80
       Protocol: HTTP
-  HttpsListener:
-    Type: 'AWS::ElasticLoadBalancingV2::Listener'
-    Condition: HasLoadBalancerCertificateArn
-    Properties:
-      Certificates:
-      - CertificateArn: !Ref LoadBalancerCertificateArn
-      DefaultActions:
-      - TargetGroupArn: !Ref DefaultTargetGroup
-        Type: forward
-      LoadBalancerArn: !Ref LoadBalancer
-      Port: 443
-      Protocol: HTTPS# This alarm is triggered, if the load balancer responds with 5XX status codes
   LoadBalancer5XXAlarm:
     Type: 'AWS::CloudWatch::Alarm'
     Properties:

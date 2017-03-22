@@ -13,6 +13,7 @@ Resources:
     DependsOn: CloudFormationRole # make sure that CloudFormationRole is deleted last
     DeletionPolicy: Retain
     Type: 'AWS::S3::Bucket'
+  # Private repository that stores Docker images
   ArtifactsRepository:
     Type: 'AWS::ECR::Repository'
     Properties: {}
@@ -132,6 +133,7 @@ Resources:
             Action: 
             - 'cloudformation:DescribeStacks'
             Resource: !Sub 'arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${AWS::StackName}-acceptance/*'
+  # Docker needs a set of access rights to push images to the repository
   ImageCodeBuildRole:
     DependsOn: CloudFormationRole # make sure that CloudFormationRole is deleted last
     Type: 'AWS::IAM::Role'
@@ -245,6 +247,7 @@ Resources:
             files:
             - 'acceptance/**/*'
       TimeoutInMinutes: 10
+  # build the Docker image and publish the tag of the image as an artifact
   ImageProject:
     DependsOn: CloudFormationRole # make sure that CloudFormationRole is deleted last
     Type: 'AWS::CodeBuild::Project'

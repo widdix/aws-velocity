@@ -2,9 +2,6 @@
   "Parameters": {
     "ParentVPCStack": "vpc-2azs",
     "ParentClusterStack": "ecs-cluster",
-    "ParentAuthProxyStack": "",
-    "LoadBalancerScheme": "internet-facing",
-    "LoadBalancerCertificateArn": "",
     "Image": {"Fn::GetParam": ["Image", "infrastructure/image.json", "image"]},
     "DesiredCount": 2,
     "MaxCapacity": 4,
