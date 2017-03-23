@@ -1,0 +1,11 @@
+{
+  "Parameters": {
+    "ParentVPCStack": "vpc-2azs",
+    "ParentClusterStack": "ecs-cluster",
+    "Image": {"Fn::GetParam": ["Image", "infrastructure/image.json", "image"]},
+    "DesiredCount": "2",
+    "MaxCapacity": "4",
+    "MinCapacity": "2",
+    "AdminEmail": "michael@widdix.de"
+  }
+}
