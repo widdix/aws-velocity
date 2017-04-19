@@ -12,7 +12,7 @@ exports.factorial = function(event, context, cb) {
     cb(null, {
       statusCode: 200,
       headers: {
-        'Content-Type': 'plain/text'
+        'Content-Type': 'text/plain'
       },
       body: factorial(n).toString()
     });
