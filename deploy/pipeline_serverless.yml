@@ -1,5 +1,4 @@
 ---
-# TODO change michael@widdix.de to your@email.com
 AWSTemplateFormatVersion: '2010-09-09'
 Description: 'Pipeline: Serverless'
 Parameters:
@@ -8,7 +7,7 @@ Parameters:
     Default: 'aws-velocity'
   BranchName:
     Type: String
-    Default: 'serverless' # TODO change to master
+    Default: 'master'
 Resources:
   ArtifactsBucket:
     DependsOn: CloudFormationRole # make sure that CloudFormationRole is deleted last
