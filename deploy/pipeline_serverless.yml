@@ -1,13 +1,13 @@
 ---
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Pipeline'
+Description: 'Pipeline: Serverless'
 Parameters:
   RepositoryName:
     Type: String
     Default: 'aws-velocity'
   BranchName:
     Type: String
-    Default: 'master'
+    Default: 'serverless'
 Resources:
   ArtifactsBucket:
     DependsOn: CloudFormationRole # make sure that CloudFormationRole is deleted last
