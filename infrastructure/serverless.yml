@@ -1,0 +1,135 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: 'AWS::Serverless-2016-10-31'
+Description: 'Serverless'
+Parameters:
+  S3Bucket:
+    Type: String
+  S3Key:
+    Type: String
+  AdminEmail:
+    Description: 'The email address of the admin who receives alerts.'
+    Type: String
+Resources:
+  # A SNS topic is used to send alerts via Email to the value of the AdminEmail parameter 
+  Alerts:
+    Type: 'AWS::SNS::Topic'
+    Properties:
+      Subscription:
+      - Endpoint: !Ref AdminEmail
+        Protocol: email
+  ApiGateway:
+    Type: 'AWS::Serverless::Api'
+    Properties:
+      StageName: Prod
+      DefinitionBody:
+        swagger: '2.0'
+        basePath: '/'
+        info:
+          title: Serverless
+        schemes:
+        - https
+        x-amazon-apigateway-request-validators:
+          basic:
+            validateRequestBody: true
+            validateRequestParameters: true
+        paths:
+          '/{n}':
+            parameters:
+            - name: 'n'
+              in: path
+              description: 'N'
+              required: true
+              type: number
+            get:
+              produces:
+              - 'text/plain'
+              responses:
+                '200':
+                  description: 'factorial calculated'
+                  schema:
+                    type: number
+              x-amazon-apigateway-request-validator: basic
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: 'aws_proxy'
+                uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetFactorialLambda.Arn}/invocations'
+                passthroughBehavior: when_no_match
+  ApiGateway5XXErrorAlarm:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmDescription: 'Api Gateway server-side errors captured'
+      Namespace: 'AWS/ApiGateway'
+      MetricName: 5XXError
+      Dimensions:
+      - Name: ApiName
+        Value: !Ref ApiGateway
+      - Name: Stage
+        Value: Prod
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+      - !Ref Alerts
+  GetFactorialLambda:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      Handler: 'app/handler.factorial'
+      Runtime: 'nodejs6.10'
+      CodeUri:
+        Bucket: !Ref S3Bucket
+        Key: !Ref S3Key
+      Events:
+        Http:
+          Type: Api
+          Properties:
+            Path: /{n}
+            Method: get
+            RestApiId: !Ref ApiGateway
+  GetFactorialLambdaLambdaErrorsAlarm:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmDescription: 'GET /{n} lambda errors'
+      Namespace: 'AWS/Lambda'
+      MetricName: Errors
+      Dimensions:
+      - Name: FunctionName
+        Value: !Ref GetFactorialLambda
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+      - !Ref Alerts
+  GetFactorialLambdaLambdaThrottlesAlarm:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmDescription: 'GET /{n} lambda throttles'
+      Namespace: 'AWS/Lambda'
+      MetricName: Throttles
+      Dimensions:
+      - Name: FunctionName
+        Value: !Ref GetFactorialLambda
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+      - !Ref Alerts
+# A CloudFormation stack can return information that is needed by other stacks or scripts.
+Outputs:
+  DNSName:
+    Description: 'The DNS name for the API gateway.'
+    Value: !Sub '${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com'
+    Export:
+      Name: !Sub '${AWS::StackName}-DNSName'
+  # The URL is needed to run the acceptance test against the correct endpoint
+  URL:
+    Description: 'URL to the API gateway.'
+    Value: !Sub 'https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/Prod'
+    Export:
+      Name: !Sub '${AWS::StackName}-URL'
