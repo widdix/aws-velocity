@@ -154,7 +154,7 @@ Resources:
             'awslogs-group':
               'Fn::ImportValue': !Sub '${ParentClusterStack}-LogGroup'
             'awslogs-stream-prefix': !Ref 'AWS::StackName'
-  # The role is empty, so the container has no access rights at the moment
+  # The role is using the managed policy AmazonEC2ContainerServiceRole
   ServiceRole:
     Type: 'AWS::IAM::Role'
     Properties:
