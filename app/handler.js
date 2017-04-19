@@ -9,7 +9,6 @@ exports.factorial = function(event, context, cb) {
       statusCode: 400
     });
   } else {
-    res.(factorial(n).toString());
     cb(null, {
       statusCode: 200,
       headers: {
