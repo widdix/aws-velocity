@@ -2,6 +2,6 @@
   "Parameters": {
     "S3Bucket": {"Fn::GetArtifactAtt": ["App", "BucketName"]},
     "S3Key": {"Fn::GetArtifactAtt": ["App", "ObjectKey"]},
-    "AdminEmail": "michael@widdix.de"
+    "AdminEmail": "your@email.com"
   }
 }
