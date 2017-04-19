@@ -29,6 +29,10 @@ Resources:
           title: Serverless
         schemes:
         - https
+        x-amazon-apigateway-request-validators:
+          basic:
+            validateRequestBody: true
+            validateRequestParameters: true
         paths:
           '/{n}':
             parameters:
@@ -42,10 +46,13 @@ Resources:
               - 'text/plain'
               responses:
                 '200':
-                  description: 'success'
+                  description: 'factorial calculated'
+                  schema:
+                    type: number
+              x-amazon-apigateway-request-validator: basic
               x-amazon-apigateway-integration:
                 httpMethod: POST
-                type: aws_proxy
+                type: 'aws_proxy'
                 uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetFactorialLambda.Arn}/invocations'
                 passthroughBehavior: when_no_match
   ApiGateway5XXErrorAlarm:
@@ -66,39 +73,6 @@ Resources:
       ComparisonOperator: GreaterThanOrEqualToThreshold
       AlarmActions:
       - !Ref Alerts
-  # GET /{n}
-  GetFactorialLambdaLambdaErrorsAlarm:
-    Type: 'AWS::CloudWatch::Alarm'
-    Properties:
-      AlarmDescription: 'GET /{n} lambda errors'
-      Namespace: 'AWS/Lambda'
-      MetricName: Errors
-      Dimensions:
-      - Name: FunctionName
-        Value: !Ref GetFactorialLambda
-      Statistic: Sum
-      Period: 60
-      EvaluationPeriods: 1
-      Threshold: 1
-      ComparisonOperator: GreaterThanOrEqualToThreshold
-      AlarmActions:
-      - !Ref AlertTopic
-  GetFactorialLambdaLambdaThrottlesAlarm:
-    Type: 'AWS::CloudWatch::Alarm'
-    Properties:
-      AlarmDescription: 'GET /{n} lambda throttles'
-      Namespace: 'AWS/Lambda'
-      MetricName: Throttles
-      Dimensions:
-      - Name: FunctionName
-        Value: !Ref GetFactorialLambda
-      Statistic: Sum
-      Period: 60
-      EvaluationPeriods: 1
-      Threshold: 1
-      ComparisonOperator: GreaterThanOrEqualToThreshold
-      AlarmActions:
-      - !Ref AlertTopic
   GetFactorialLambda:
     Type: 'AWS::Serverless::Function'
     Properties:
@@ -114,6 +88,38 @@ Resources:
             Path: /{n}
             Method: get
             RestApiId: !Ref ApiGateway
+  GetFactorialLambdaLambdaErrorsAlarm:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmDescription: 'GET /{n} lambda errors'
+      Namespace: 'AWS/Lambda'
+      MetricName: Errors
+      Dimensions:
+      - Name: FunctionName
+        Value: !Ref GetFactorialLambda
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+      - !Ref Alerts
+  GetFactorialLambdaLambdaThrottlesAlarm:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmDescription: 'GET /{n} lambda throttles'
+      Namespace: 'AWS/Lambda'
+      MetricName: Throttles
+      Dimensions:
+      - Name: FunctionName
+        Value: !Ref GetFactorialLambda
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+      - !Ref Alerts
 # A CloudFormation stack can return information that is needed by other stacks or scripts.
 Outputs:
   DNSName:
