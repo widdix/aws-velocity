@@ -1,8 +1,9 @@
 ---
 AWSTemplateFormatVersion: '2010-09-09'
-Transform: 'AWS::Serverless-2016-10-31'
+Transform: 'AWS::Serverless-2016-10-31' # this line activates the SAM transformations!a
 Description: 'Serverless'
 Parameters:
+  # S3Bucket and S3Key where the zipped code is located. This will be created with CodeBuild
   S3Bucket:
     Type: String
   S3Key:
@@ -29,13 +30,14 @@ Resources:
           title: Serverless
         schemes:
         - https
+        # We want to validate the body and request parameters
         x-amazon-apigateway-request-validators:
           basic:
             validateRequestBody: true
             validateRequestParameters: true
         paths:
           '/{n}':
-            parameters:
+            parameters: # we expect one parameter in the path of type number
             - name: 'n'
               in: path
               description: 'N'
@@ -49,8 +51,8 @@ Resources:
                   description: 'factorial calculated'
                   schema:
                     type: number
-              x-amazon-apigateway-request-validator: basic
-              x-amazon-apigateway-integration:
+              x-amazon-apigateway-request-validator: basic # enable validation for this resource
+              x-amazon-apigateway-integration: # this section connect the Lambda function with the API Gateway
                 httpMethod: POST
                 type: 'aws_proxy'
                 uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetFactorialLambda.Arn}/invocations'
@@ -88,6 +90,7 @@ Resources:
             Path: /{n}
             Method: get
             RestApiId: !Ref ApiGateway
+  # This alarm is triggered, if the Node.js function returns or throws an Error
   GetFactorialLambdaLambdaErrorsAlarm:
     Type: 'AWS::CloudWatch::Alarm'
     Properties:
@@ -104,6 +107,7 @@ Resources:
       ComparisonOperator: GreaterThanOrEqualToThreshold
       AlarmActions:
       - !Ref Alerts
+  # This alarm is triggered, if the there are too many function invocations
   GetFactorialLambdaLambdaThrottlesAlarm:
     Type: 'AWS::CloudWatch::Alarm'
     Properties:
