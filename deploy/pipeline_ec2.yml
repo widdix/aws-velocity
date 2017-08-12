@@ -7,7 +7,7 @@ Parameters:
     Default: 'aws-velocity'
   BranchName:
     Type: String
-    Default: 'packer' # TODO switch back to master
+    Default: 'master'
 Resources:
   ArtifactsBucket:
     DependsOn: CloudFormationRole # make sure that CloudFormationRole is deleted last
