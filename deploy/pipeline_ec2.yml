@@ -291,7 +291,7 @@ Resources:
             install: # install Packer
               commands:
               - 'yum -y install unzip'
-              - 'curl -s -m 60 -o /opt/packer.zip https://releases.hashicorp.com/packer/1.0.0/packer_1.0.0_linux_amd64.zip'
+              - 'curl -s -m 60 -o /opt/packer.zip https://releases.hashicorp.com/packer/1.0.4/packer_1.0.4_linux_amd64.zip'
               - 'unzip /opt/packer.zip -d /opt'
             pre_build: # replace the REGION placeholder with the stack's region
               commands:
