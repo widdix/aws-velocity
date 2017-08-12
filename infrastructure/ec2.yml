@@ -124,6 +124,9 @@ Resources:
         Value: 'target-group'
       VpcId:
         'Fn::ImportValue': !Sub '${ParentVPCStack}-VPC'
+      TargetGroupAttributes:
+      - Key: deregistration_delay.timeout_seconds
+        Value: 10
   # The load balancer should listen on port 80 for HTTP traffic
   Listener:
     Type: 'AWS::ElasticLoadBalancingV2::Listener'
