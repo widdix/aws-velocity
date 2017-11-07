@@ -272,7 +272,7 @@ Resources:
               - 'docker build -f infrastructure/Dockerfile -t ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ArtifactsRepository}:${!CODEBUILD_BUILD_ID#*:} .'
             post_build:
               commands:
-              - 'eval $(aws ecr get-login) && docker push ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ArtifactsRepository}:${!CODEBUILD_BUILD_ID#*:}'
+              - 'eval $(aws ecr get-login --no-include-email) && docker push ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ArtifactsRepository}:${!CODEBUILD_BUILD_ID#*:}'
               - 'echo "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ArtifactsRepository}:${!CODEBUILD_BUILD_ID#*:}" > infrastructure/image.txt'
               - 'echo "{\"image\": \"${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ArtifactsRepository}:${!CODEBUILD_BUILD_ID#*:}\"}" > infrastructure/image.json'
           artifacts:
