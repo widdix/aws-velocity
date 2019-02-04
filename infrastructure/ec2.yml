@@ -312,7 +312,6 @@ Resources:
       LaunchConfigurationName: !Ref LaunchConfiguration
       MinSize: 2 # at least two instances should always be running
       MaxSize: 4 # at most 4 instances are allowed to run
-      DesiredCapacity: 2 # you want to start with 2 instances
       HealthCheckGracePeriod: 300
       HealthCheckType: ELB # make use of the health check of the load balancer which checks the application health instead of only checking the instance health
       VPCZoneIdentifier: 
