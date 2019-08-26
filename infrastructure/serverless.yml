@@ -107,6 +107,7 @@ Resources:
       ComparisonOperator: GreaterThanOrEqualToThreshold
       AlarmActions:
       - !Ref Alerts
+      TreatMissingData: notBreaching
   # This alarm is triggered, if the there are too many function invocations
   GetFactorialLambdaLambdaThrottlesAlarm:
     Type: 'AWS::CloudWatch::Alarm'
@@ -124,6 +125,7 @@ Resources:
       ComparisonOperator: GreaterThanOrEqualToThreshold
       AlarmActions:
       - !Ref Alerts
+      TreatMissingData: notBreaching
 # A CloudFormation stack can return information that is needed by other stacks or scripts.
 Outputs:
   DNSName:
