@@ -75,6 +75,7 @@ Resources:
       ComparisonOperator: GreaterThanOrEqualToThreshold
       AlarmActions:
       - !Ref Alerts
+      TreatMissingData: notBreaching
   GetFactorialLambda:
     Type: 'AWS::Serverless::Function'
     Properties:
