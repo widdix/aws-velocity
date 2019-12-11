@@ -230,8 +230,6 @@ Resources:
               commands:
               - 'cd app/ && npm install'
               - 'cd app/ && npm test'
-            post_build:
-              commands:
               - 'rm -rf app/node_modules/'
               - 'rm -rf app/test/'
               - 'cd app/ && npm install --production'
@@ -262,8 +260,6 @@ Resources:
               commands:
               - 'cd acceptance/ && npm install'
               - 'cd acceptance/ && npm test'
-            post_build:
-              commands:
               - 'rm -rf acceptance/node_modules/'
               - 'rm -rf acceptance/test/'
               - 'cd acceptance/ && npm install --production'
@@ -296,11 +292,11 @@ Resources:
             pre_build: # replace the REGION placeholder with the stack's region
               commands:
               - 'sed -i "s:REGION:${AWS::Region}:g" infrastructure/packer.json'
-            build: # run packer
+            build:
               commands:
+              # run packer
               - '/opt/packer -machine-readable build infrastructure/packer.json | tee infrastructure/packer.txt'
-            post_build: # extract the AMI id into a JSON file
-              commands:
+              # extract the AMI id into a JSON file
               - 'echo "{" > infrastructure/ami.json'
               - 'cat infrastructure/packer.txt | grep '',amazon-ebs,artifact,0,id,'' | awk -F'','' ''{print $6}'' | sed ''s/%!(PACKER_COMMA)/\''$''\n/g'' | awk -F'':'' ''{print "\"image\": \""$2"\","}'' | sed ''$ s/.$//'' >> infrastructure/ami.json'
               - 'echo "}" >> infrastructure/ami.json'
